@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timing Studio — static timing analysis in your browser</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #1c2330; --border: #2d3748;
+    --text: #d7dde6; --muted: #8b96a5; --accent: #4ea1ff; --accent2: #ff9e42;
+    --ok: #3fb950; --err: #f85149; --warn: #d29922; --mono: 'SF Mono','Cascadia Code',Consolas,'Courier New',monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; font-size: 14px; display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 14px; padding: 9px 18px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .logo { display: flex; align-items: baseline; gap: 9px; }
+  .logo h1 { font-size: 18px; font-weight: 700; }
+  .logo h1 span { color: var(--accent); }
+  .logo .tag { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .pill { font-size: 11px; color: var(--accent); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; background: rgba(78,161,255,.08); }
+  main { flex: 1; display: flex; min-height: 0; }
+
+  #left { width: 42%; min-width: 360px; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--bg2); }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tabs button { background: none; border: none; color: var(--muted); padding: 8px 14px; font-size: 12.5px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); background: var(--bg3); }
+  .pane { flex: 1; display: none; flex-direction: column; min-height: 0; }
+  .pane.active { display: flex; }
+  textarea.editor {
+    flex: 1; width: 100%; resize: none; border: none; outline: none; background: var(--bg);
+    color: #c9d8e8; font-family: var(--mono); font-size: 12px; line-height: 1.5; padding: 12px; tab-size: 8; white-space: pre;
+  }
+  .leftbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; flex-shrink: 0; }
+  select, .btn { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; cursor: pointer; }
+  .btn:hover, select:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #06111f; font-weight: 700; }
+  .btn.primary:hover { background: #6db2ff; }
+  label.knob { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  label.knob input { width: 62px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-family: var(--mono); font-size: 12px; }
+  #status { font-size: 12px; color: var(--muted); margin-left: auto; }
+  #status.ok { color: var(--ok); } #status.err { color: var(--err); }
+
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; padding: 12px 14px 4px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px 8px; }
+  .card .num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card .lbl { font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+  .neg { color: var(--err); } .pos { color: var(--ok); }
+  #results { flex: 1; overflow-y: auto; padding: 8px 14px 20px; min-height: 0; }
+  h3.sect { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; font-family: var(--mono); }
+  table.tbl { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .tbl th { text-align: left; font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); }
+  .tbl td { padding: 6px 8px; border-bottom: 1px solid #1e2530; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tbl tr:hover td { background: rgba(78,161,255,.07); }
+  .tbl td.mono, .tbl th.mono { font-family: var(--mono); font-size: 12px; }
+  .pathrow { cursor: pointer; }
+  .pathrow.sel td { background: rgba(78,161,255,.14); }
+  #pathdetail { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-top: 12px; }
+  #pathdetail h4 { font-size: 14px; margin-bottom: 8px; }
+  .stage { display: grid; grid-template-columns: 26px 150px 110px 92px 1fr 80px; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 5px; font-size: 12px; font-family: var(--mono); }
+  .stage:nth-child(even) { background: rgba(255,255,255,.025); }
+  .stage .bar { height: 9px; border-radius: 4px; background: var(--accent); }
+  .stage .bar.net { background: var(--accent2); }
+  .stage .d { text-align: right; }
+  #histwrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  #warnbox { font-size: 12px; color: var(--warn); margin-top: 10px; font-family: var(--mono); }
+  .help { padding: 18px 22px; overflow-y: auto; line-height: 1.6; font-size: 13px; }
+  .help h3 { color: var(--accent); margin: 12px 0 6px; font-size: 14px; }
+  .help code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); padding: 1px 5px; border-radius: 4px; color: #9fd0ff; }
+  pre.ex { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 6px 0; overflow-x: auto; color: #b8c6d9; }
+  .fmaxnote { color: var(--muted); font-size: 11.5px; }
+  @media (max-width: 950px) { main { flex-direction: column; overflow-y: auto; } #left { width: 100%; min-width: 0; height: 50%; border-right: none; border-bottom: 1px solid var(--border); } #right { overflow-y: visible; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <h1>Timing<span>Studio</span></h1>
+    <span class="tag">static timing analysis engine — Liberty in, gate-level Verilog in, critical paths out. Runs entirely in your browser.</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill">v0.1 · prototype</span>
+</header>
+
+<main>
+  <div id="left">
+    <div class="tabs">
+      <button id="tab-lib" class="active">Liberty&nbsp;(.lib)</button>
+      <button id="tab-netlist">Netlist&nbsp;(.v)</button>
+      <button id="tab-sdc">Constraints&nbsp;(.sdc)</button>
+      <button id="tab-help">Help&nbsp;/&nbsp;why</button>
+    </div>
+    <div class="pane active" id="pane-lib"><textarea class="editor" id="lib" spellcheck="false"></textarea></div>
+    <div class="pane" id="pane-netlist"><textarea class="editor" id="netlist" spellcheck="false"></textarea></div>
+    <div class="pane" id="pane-sdc"><textarea class="editor" id="sdc" spellcheck="false"></textarea></div>
+    <div class="pane" id="pane-help">
+      <div class="help">
+        <h3>What this tool does</h3>
+        This is a real <b>static timing analysis (STA)</b> engine — the same class of tool as Synopsys PrimeTime (the industry sign-off standard, ~$300K–1M/seat/yr) and the open-source OpenSTA. It:
+        <ol style="margin:8px 0 8px 20px">
+          <li>Parses your <b>Liberty (.lib)</b> library — cells, pin caps, and NLDM delay/transition lookup tables with bilinear interpolation</li>
+          <li>Parses your <b>structural gate-level Verilog netlist</b> (flatten hierarchical modules; for RTL run Yosys first)</li>
+          <li>Reads <b>SDC constraints</b> — create_clock, set_input_delay, set_output_delay, set_load, set_input_transition</li>
+          <li>Propagates <b>rise/fall arrival times and slews</b> through every cell (per arc, honouring unateness) and net (fanout-based interconnect model)</li>
+          <li>Checks <b>setup</b> and <b>hold</b> at sequential pins and outputs, computes <b>slack / WNS / TNS</b>, and traces <b>critical paths</b> stage-by-stage</li>
+        </ol>
+        <h3>Why it matters for India</h3>
+        Timing sign-off is the single most-used analysis step in digital chip design — run daily by every design team on earth, and dominated by one foreign tool. A free, auditable, browser-based STA engine gives students, startups and MSMEs the ability to close timing on mature nodes without a PrimeTime licence — and a foundation for a serious Indian alternative (add SPEF interconnect, propagated clocks, and MCMM, and it approaches production use).
+        <h3>Quick reference</h3>
+        <pre class="ex">create_clock -name clk -period 2.0 [get_ports clk]
+set_input_delay 0.2 [get_ports {a b cin}]
+set_output_delay 0.1 [get_ports {s*}]  <span style="color:#5a6a80">— patterns not yet supported, list ports</span></pre>
+        Net delay model: <b>delay = (fanouts − 1) × net-delay knob</b> (top left). Input slews default to the knob value. Clock is ideal (zero skew). Units come from the Liberty file (ns / pF here).
+        <h3>Engine notes</h3>
+        Modified graph-traversal STA: topological propagation with Kahn's algorithm, unateness-aware edge selection, per-edge arrival/slew state, NLDM bilinear lookup with clamping, ideal clocks, loop detection. Verified against hand-computed paths (pipeline: clk2q + 3 gates = exact; 4-bit ripple-carry adder carry-chain = exact).
+      </div>
+    </div>
+    <div class="leftbar">
+      <select id="examples" title="Load an example design">
+        <option value="">— load example design —</option>
+      </select>
+      <button class="btn primary" id="run">▸ Run STA</button>
+      <label class="knob" title="Interconnect delay added per extra fanout on a net">net delay ps/fanout <input id="netdelay" type="number" value="4" step="1" min="0"></label>
+      <label class="knob" title="Default input transition used for ports and clock pins">input slew ps <input id="inslew" type="number" value="20" step="5" min="1"></label>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="right">
+    <div id="cards"></div>
+    <div id="results">
+      <h3 class="sect">Critical paths (click a row)</h3>
+      <div id="pathtbl"></div>
+      <div id="pathdetail" style="display:none"></div>
+      <h3 class="sect">Endpoint slack distribution</h3>
+      <div id="histwrap"><canvas id="hist" height="130" style="width:100%; display:block"></canvas></div>
+      <div id="warnbox"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* =====================================================================
+   TimingCore — a static timing analysis (STA) engine in pure JS
+   Parses: Liberty .lib (cells + NLDM timing tables), structural Verilog
+   netlists (with module hierarchy flattening), and a subset of SDC
+   (create_clock / set_input_delay / set_output_delay / set_load).
+   Performs: rise/fall arrival & slew propagation, NLDM interpolation,
+   setup/hold checks at sequential pins, output checks, WNS/TNS,
+   critical-path extraction with per-stage delay breakdown.
+   ===================================================================== */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) module.exports = factory();
+  else root.TimingCore = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  /* =============== shared text utilities =============== */
+  function stripComments(s) {
+    s = s.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    s = s.replace(/\/\/[^\n]*/g, ' ');
+    return s;
+  }
+
+  /* =============== Liberty parser =============== */
+  // Tokenizer: ids, numbers, quoted strings, punctuation
+  function lexLiberty(text) {
+    const t = stripComments(text);
+    const toks = [];
+    const re = /("(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_\/'\[\]\.]*)|([-+]?[0-9][0-9eE\.\+\-]*)|([{}()\[\]:,;=\*])/g;
+    let m, last = 0;
+    while ((m = re.exec(t)) !== null) {
+      if (m.index > last) { const gap = t.slice(last, m.index).trim(); if (gap) throw new Error('Liberty lexer: unexpected text "' + gap.slice(0, 30) + '"'); }
+      if (m[1]) toks.push({ t: 'str', v: m[1].slice(1, -1) });
+      else if (m[2]) toks.push({ t: 'id', v: m[2] });
+      else if (m[3]) toks.push({ t: 'num', v: m[3] });
+      else toks.push({ t: 'sym', v: m[4] });
+      last = re.lastIndex;
+    }
+    return toks;
+  }
+
+  // Parse into a group tree: {name, params:[], attrs:{}, groups:[]}
+  function parseLiberty(text) {
+    const toks = lexLiberty(text);
+    let p = 0;
+    function peek() { return toks[p]; }
+    function expectSym(ch) {
+      const tk = toks[p++];
+      if (!tk || tk.t !== 'sym' || tk.v !== ch) throw new Error('Liberty parse: expected "' + ch + '" at token ' + p);
+    }
+
+    function parseValue() {
+      const tk = peek();
+      if (!tk) return null;
+      if (tk.t === 'str') { p++; return tk.v; }
+      if (tk.t === 'num') { p++; return parseFloat(tk.v); }
+      if (tk.t === 'id') { p++; return tk.v; }
+      return null;
+    }
+
+    function parseHeaderArgs() {
+      const args = [];
+      // inside parentheses already consumed? no — caller consumed '('
+      while (true) {
+        const tk = peek();
+        if (!tk) throw new Error('Liberty parse: EOF in args');
+        if (tk.t === 'sym' && tk.v === ')') { p++; break; }
+        if (tk.t === 'sym' && tk.v === ',') { p++; continue; }
+        args.push(parseValue());
+      }
+      return args;
+    }
+
+    function parseStatement() {
+      const tk = peek();
+      if (!tk || tk.t !== 'id') throw new Error('Liberty parse: expected identifier at token ' + p);
+      p++;
+      const name = tk.v;
+      const next = peek();
+      if (next && next.t === 'sym' && next.v === '(') {
+        p++; // consume (
+        const args = parseHeaderArgs();
+        const after = peek();
+        if (after && after.t === 'sym' && after.v === '{') {
+          p++; // consume {
+          const grp = { name, args, attrs: {}, groups: [] };
+          while (true) {
+            const t2 = peek();
+            if (!t2) throw new Error('Liberty parse: EOF inside group ' + name);
+            if (t2.t === 'sym' && t2.v === '}') { p++; break; }
+            const st = parseStatement();
+            if (st.kind === 'group') grp.groups.push(st.grp);
+            else if (st.kind === 'cattr') grp.groups.push({ name: st.name, args: st.args, attrs: {}, groups: [] }); // complex attr kept as leaf pseudo-group
+            else if (st.kind === 'attr') grp.attrs[st.name] = st.val;
+          }
+          return { kind: 'group', grp };
+        }
+        // simple complex-attribute: ID(args);
+        if (after && after.t === 'sym' && after.v === ';') p++;
+        return { kind: 'cattr', name, args };
+      }
+      if (next && next.t === 'sym' && next.v === ':') {
+        p++;
+        const val = parseValue();
+        const semi = peek();
+        if (semi && semi.t === 'sym' && semi.v === ';') p++;
+        return { kind: 'attr', name, val };
+      }
+      return { kind: 'attr', name, val: null };
+    }
+
+    const root = { name: 'root', args: [], attrs: {}, groups: [] };
+    while (p < toks.length) {
+      if (peek().t === 'sym' && peek().v === '}') { p++; continue; }
+      const st = parseStatement();
+      if (st.kind === 'group') root.groups.push(st.grp);
+      else if (st.kind === 'attr') root.attrs[st.name] = st.val;
+    }
+    return root;
+  }
+
+  // find sub-groups / attrs helpers
+  function subGroups(g, name) { return g.groups.filter(x => x.name === name); }
+  function attr(g, name) { return g.attrs[name] !== undefined ? g.attrs[name] : null; }
+  function cattr(g, name) { const s = g.groups.find(x => x.name === name && !x.groups.length && x.args.length); return s ? s.args : null; }
+
+  // numbers list from an index group (Liberty stores quoted csv or bare)
+  function numList(vals) {
+    const out = [];
+    for (const v of vals) {
+      if (typeof v === 'string') for (const x of v.split(',')) { const f = parseFloat(x); if (!isNaN(f)) out.push(f); }
+      else if (typeof v === 'number') out.push(v);
+    }
+    return out;
+  }
+
+  // Convert an AST table group to {i1, i2, vals}, resolving template
+  function tableFromGroup(tblGrp, templates) {
+    if (!tblGrp) return null;
+    let i1 = numList(cattr(tblGrp, 'index_1') || []);
+    let i2 = numList(cattr(tblGrp, 'index_2') || []);
+    const tmplName = (tblGrp.args && tblGrp.args[0]) || null;
+    if ((!i1.length || !i2.length) && tmplName && templates[tmplName]) {
+      if (!i1.length) i1 = templates[tmplName].i1;
+      if (!i2.length) i2 = templates[tmplName].i2;
+    }
+    let vals = [];
+    const valRows = cattr(tblGrp, 'values') || [];
+    for (const r of valRows) {
+      if (typeof r === 'string') {
+        const row = r.split(',').map(x => parseFloat(x));
+        if (row.some(isNaN)) throw new Error('Liberty: bad values in table ' + tblGrp.name);
+        vals.push(row);
+      }
+    }
+    if (!vals.length || !i1.length || !i2.length) throw new Error('Liberty: incomplete table ' + tblGrp.name);
+    return { i1, i2, vals };
+  }
+
+  // bilinear interpolation with clamping
+  function lookup(tbl, s, c) {
+    const clamp = (arr, v) => Math.max(arr[0], Math.min(arr[arr.length - 1], v));
+    const i1 = tbl.i1, i2 = tbl.i2, v = tbl.vals;
+    const x = clamp(i1, s), y = clamp(i2, c);
+    let i = 0; while (i < i1.length - 1 && i1[i + 1] < x) i++;
+    let j = 0; while (j < i2.length - 1 && i2[j + 1] < y) j++;
+    const x0 = i1[i], x1 = i1[Math.min(i + 1, i1.length - 1)];
+    const y0 = i2[j], y1 = i2[Math.min(j + 1, i2.length - 1)];
+    const tx = x1 > x0 ? (x - x0) / (x1 - x0) : 0;
+    const ty = y1 > y0 ? (y - y0) / (y1 - y0) : 0;
+    const v00 = v[i][j], v01 = v[i][Math.min(j + 1, i2.length - 1)];
+    const v10 = v[Math.min(i + 1, i1.length - 1)][j], v11 = v[Math.min(i + 1, i1.length - 1)][Math.min(j + 1, i2.length - 1)];
+    return v00 * (1 - tx) * (1 - ty) + v01 * (1 - tx) * ty + v10 * tx * (1 - ty) + v11 * tx * ty;
+  }
+
+  /* Build library model from liberty text */
+  function buildLibrary(text) {
+    const ast = parseLiberty(text);
+    const libGroup = ast.groups.find(g => g.name === 'library');
+    if (!libGroup) throw new Error('Liberty: no library() group found');
+    const lib = {
+      name: (libGroup.args && libGroup.args[0]) || 'lib',
+      timeUnit: attr(libGroup, 'time_unit') || '1ns',
+      capUnit: attr(libGroup, 'capacitance_unit') || '1pf',
+      templates: {}, cells: {}
+    };
+    for (const t of subGroups(libGroup, 'lu_table_template')) {
+      lib.templates[(t.args && t.args[0]) || '?'] = {
+        i1: numList(cattr(t, 'index_1') || []),
+        i2: numList(cattr(t, 'index_2') || [])
+      };
+    }
+    for (const cg of subGroups(libGroup, 'cell')) {
+      const cellName = (cg.args && cg.args[0]);
+      const cell = { name: cellName, area: attr(cg, 'area') || 0, pins: {}, isSequential: false };
+      for (const pg of subGroups(cg, 'pin')) {
+        const pinName = (pg.args && pg.args[0]);
+        const pin = {
+          name: pinName,
+          dir: (attr(pg, 'direction') || 'input').toLowerCase(),
+          cap: typeof attr(pg, 'capacitance') === 'number' ? attr(pg, 'capacitance') : 0,
+          isClock: attr(pg, 'clock') === true || attr(pg, 'clock') === 'true',
+          function: attr(pg, 'function') || null,
+          arcs: [] // arcs FROM related pin INTO this pin (delay: related -> this for outputs; constraint: related(ck) vs this(D))
+        };
+        for (const tg of subGroups(pg, 'timing')) {
+          const arc = {
+            related: attr(tg, 'related_pin'),
+            sense: (attr(tg, 'timing_sense') || 'non_unate'),
+            type: attr(tg, 'timing_type') || 'combinational'
+          };
+          if (arc.related) arc.related = String(arc.related).replace(/"/g, '');
+          if (arc.type === 'rising_edge' || arc.type === 'falling_edge' ||
+              arc.type === 'setup_rising' || arc.type === 'setup_falling' ||
+              arc.type === 'hold_rising' || arc.type === 'hold_falling') cell.isSequential = cell.isSequential || (arc.type !== 'combinational');
+          if (cell.isSequential === false && arc.type === 'combinational') { /* keep */ }
+          arc.cellRise = tableFromGroup(subGroups(tg, 'cell_rise')[0], lib.templates);
+          arc.cellFall = tableFromGroup(subGroups(tg, 'cell_fall')[0], lib.templates);
+          arc.riseTrans = tableFromGroup(subGroups(tg, 'rise_transition')[0], lib.templates);
+          arc.fallTrans = tableFromGroup(subGroups(tg, 'fall_transition')[0], lib.templates);
+          arc.riseConstraint = tableFromGroup(subGroups(tg, 'rise_constraint')[0], lib.templates);
+          arc.fallConstraint = tableFromGroup(subGroups(tg, 'fall_constraint')[0], lib.templates);
+          pin.arcs.push(arc);
+        }
+        cell.pins[pinName] = pin;
+      }
+      lib.cells[cellName] = cell;
+    }
+    return lib;
+  }
+
+  /* =============== Verilog structural netlist parser =============== */
+  function lexVerilog(text) {
+    const t = stripComments(text);
+    const toks = [];
+    const re = /("(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_$]*)|(\\[A-Za-z0-9_]+)|([0-9][0-9a-fA-FxXzZ_]*[hHbBoO]?[0-9a-fA-FxXzZ_]*)|([{}()\[\]:,;=#\.])/g;
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      if (m[1]) toks.push({ t: 'str', v: m[1].slice(1, -1) });
+      else if (m[2]) toks.push({ t: 'id', v: m[2] });
+      else if (m[3]) toks.push({ t: 'id', v: m[3].slice(1) });
+      else if (m[4]) toks.push({ t: 'num', v: m[4] });
+      else toks.push({ t: 'sym', v: m[5] });
+    }
+    return toks;
+  }
+
+  function parseNetlist(text) {
+    const toks = lexVerilog(text);
+    let p = 0;
+    const peek = () => toks[p];
+    const next = () => toks[p++];
+    function expectSym(ch) {
+      const tk = next();
+      if (!tk || tk.t !== 'sym' || tk.v !== ch) throw new Error('Verilog parse: expected "' + ch + '" near token ' + (p - 1) + (tk ? ' (got "' + tk.v + '")' : ''));
+    }
+    function expectId() {
+      const tk = next();
+      if (!tk || tk.t !== 'id') throw new Error('Verilog parse: expected identifier at token ' + (p - 1));
+      return tk.v;
+    }
+    const modules = {};
+    while (p < toks.length) {
+      const tk = peek();
+      if (!tk) break;
+      if (tk.t === 'sym' && tk.v === ';') { p++; continue; }
+      if (tk.t === 'id' && tk.v === 'module') {
+        p++;
+        const name = expectId();
+        const mod = { name, ports: [], portDirs: {}, nets: new Set(), insts: [] };
+        // port list
+        if (peek() && peek().t === 'sym' && peek().v === '(') {
+          p++;
+          while (!(peek().t === 'sym' && peek().v === ')')) {
+            const t2 = next();
+            if (t2.t === 'id') mod.ports.push(t2.v);
+          }
+          expectSym(')');
+        }
+        expectSym(';');
+        while (!(peek().t === 'id' && peek().v === 'endmodule')) {
+          const kw = next();
+          if (!kw) throw new Error('Verilog parse: EOF before endmodule in ' + name);
+          if (kw.t !== 'id') throw new Error('Verilog parse: unexpected "' + kw.v + '" in module ' + name);
+          if (kw.v === 'input' || kw.v === 'output' || kw.v === 'inout') {
+            const names = [];
+            while (!(peek().t === 'sym' && peek().v === ';')) {
+              const t2 = next();
+              if (t2.t === 'id') names.push(t2.v);
+              else if (t2.t === 'sym' && t2.v === '[') { // bus range: accept and flatten per bit? single-bit only
+                let depth = 1; next();
+                while (depth > 0) { const t3 = next(); if (t3.t === 'sym' && t3.v === '[') depth++; if (t3.t === 'sym' && t3.v === ']') depth--; }
+              }
+            }
+            expectSym(';');
+            for (const n of names) { mod.portDirs[n] = kw.v; mod.nets.add(n); if (!mod.ports.includes(n)) mod.ports.push(n); }
+          } else if (kw.v === 'wire' || kw.v === 'reg' || kw.v === 'tri') {
+            const names = [];
+            while (!(peek().t === 'sym' && peek().v === ';')) {
+              const t2 = next();
+              if (t2.t === 'id') names.push(t2.v);
+              else if (t2.t === 'sym' && t2.v === '[') { let d = 1; next(); while (d > 0) { const t3 = next(); if (t3.t === 'sym' && t3.v === '[') d++; if (t3.t === 'sym' && t3.v === ']') d--; } }
+            }
+            expectSym(';');
+            for (const n of names) mod.nets.add(n);
+          } else if (kw.v === 'assign') {
+            throw new Error('Verilog: behavioral "assign" statements are not supported — this tool reads structural gate-level netlists (run your RTL through Yosys first: yosys -p "synth" -o out.v").');
+          } else if (kw.v === 'parameter' || kw.v === 'localparam' || kw.v === 'supply0' || kw.v === 'supply1') {
+            while (!(peek().t === 'sym' && peek().v === ';')) next();
+            expectSym(';');
+          } else {
+            // instance: CELLNAME instname ( connections );
+            const cellName = kw.v;
+            // optional #(...) parameters — skip
+            if (peek() && peek().t === 'sym' && peek().v === '#') {
+              next();
+              expectSym('(');
+              let d = 1;
+              while (d > 0) { const t3 = next(); if (t3.t === 'sym' && t3.v === '(') d++; if (t3.t === 'sym' && t3.v === ')') d--; }
+            }
+            const instName = expectId();
+            expectSym('(');
+            const conns = {};
+            const ordered = [];
+            while (!(peek().t === 'sym' && peek().v === ')')) {
+              const t2 = next();
+              if (t2.t === 'sym' && t2.v === '.') {
+                const pin = expectId();
+                expectSym('(');
+                const net = expectId();
+                conns[pin] = net;
+                ordered.push([pin, net]);
+                expectSym(')');
+              } else if (t2.t === 'id') {
+                ordered.push([null, t2.v]);
+              }
+            }
+            expectSym(')');
+            expectSym(';');
+            mod.insts.push({ cell: cellName, name: instName, conns, ordered, module: null });
+          }
+        }
+        expectId(); // endmodule
+        if (peek() && peek().t === 'sym' && peek().v === ';') p++; // optional trailing semicolon
+        modules[name] = mod;
+      } else {
+        throw new Error('Verilog parse: expected "module" near token "' + (tk.v || '') + '"');
+      }
+    }
+    return modules;
+  }
+
+  /* Flatten netlist: expand user-module instances into a top-level list */
+  function flatten(modules, topName) {
+    const top = modules[topName];
+    if (!top) throw new Error('Top module "' + topName + '" not found in netlist');
+    const outInsts = [];
+    function mapNets(mod, connMap, prefix, isTop, net) {
+      if (isTop) return net;
+      if (connMap[net] !== undefined) return connMap[net];
+      return prefix + '.' + net;
+    }
+    function expand(mod, connMap, prefix, isTop) {
+      for (const inst of mod.insts) {
+        const newName = prefix ? prefix + '.' + inst.name : inst.name;
+        if (modules[inst.cell]) {
+          // user submodule: build formal->actual map, recurse
+          const sub = modules[inst.cell];
+          const subConnMap = {};
+          inst.ordered.forEach(([pin, net], i) => {
+            const formal = pin || sub.ports[i];
+            if (formal) subConnMap[formal] = mapNets(mod, connMap, prefix, isTop, net);
+          });
+          expand(sub, subConnMap, newName, false);
+        } else {
+          // standard cell (leaf)
+          const conns = {};
+          for (const [pin, net] of inst.ordered) {
+            if (pin == null) throw new Error('Instance "' + inst.name + '" of cell ' + inst.cell + ' uses positional connections — named connections (.PIN(net)) required for standard cells');
+            conns[pin] = mapNets(mod, connMap, prefix, isTop, net);
+          }
+          outInsts.push({ cell: inst.cell, name: newName, conns });
+        }
+      }
+    }
+    expand(top, {}, '', true);
+    return { top, insts: outInsts };
+  }
+
+  /* =============== SDC-lite parser =============== */
+  function parseSDC(text) {
+    const sdc = { clocks: {}, inputDelays: {}, outputDelays: {}, loads: {}, inputTransitions: {} };
+    const cmds = stripComments(text).split(/[;\n]/).map(s => s.trim()).filter(Boolean);
+    for (const cmd of cmds) {
+      const getCollections = (s) => {
+        const nets = [];
+        const rm = [...s.matchAll(/\[?\s*get_ports\s+(?:\{([^}]*)\}|([A-Za-z0-9_\\\/]+))\s*\]?/g)];
+        for (const m of rm) {
+          if (m[1]) for (const n of m[1].split(/\s+/).filter(Boolean)) nets.push(n);
+          else if (m[2]) nets.push(m[2]);
+        }
+        return nets;
+      };
+      const nums = [...cmd.matchAll(/([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/g)].map(m => parseFloat(m[1]));
+      const nameM = cmd.match(/-name\s+([A-Za-z0-9_]+)/);
+      if (/^\s*create_clock\b/.test(cmd)) {
+        const nets = getCollections(cmd);
+        const period = nums.find((n, i) => nums.indexOf(n) === i && n > 0) || null;
+        const nm = (nameM && nameM[1]) || (nets[0] || 'clk');
+        for (const n of nets) sdc.clocks[n] = { name: nm, period };
+      } else if (/^\s*set_input_delay\b/.test(cmd)) {
+        const nets = getCollections(cmd);
+        const v = nums[0];
+        for (const n of nets) sdc.inputDelays[n] = v;
+      } else if (/^\s*set_output_delay\b/.test(cmd)) {
+        const nets = getCollections(cmd);
+        const v = nums[0];
+        for (const n of nets) sdc.outputDelays[n] = v;
+      } else if (/^\s*set_load\b/.test(cmd)) {
+        const nets = getCollections(cmd);
+        const v = nums[0];
+        for (const n of nets) sdc.loads[n] = v;
+      } else if (/^\s*set_input_transition\b/.test(cmd)) {
+        const nets = getCollections(cmd);
+        const v = nums[0];
+        for (const n of nets) sdc.inputTransitions[n] = v;
+      } else if (cmd.split(/\s+/)[0]) {
+        // unknown command — ignore silently for forward compat
+      }
+    }
+    return sdc;
+  }
+
+  /* =============== STA engine =============== */
+  const RISE = 0, FALL = 1;
+
+  function analyze(libText, verilogText, sdcText, topName, opts) {
+    opts = opts || {};
+    const lib = buildLibrary(libText);
+    const modules = parseNetlist(verilogText);
+    const flat = flatten(modules, topName || Object.keys(modules)[0]);
+    const sdc = parseSDC(sdcText || '');
+    const netDelayPerFanout = opts.netDelayPerFanout || 0; // ns per extra fanout
+    const defaultInputSlew = opts.defaultInputSlew !== undefined ? opts.defaultInputSlew : 0.02;
+
+    const warnings = [];
+    const insts = flat.insts;
+    // validate cells
+    for (const inst of insts) {
+      if (!lib.cells[inst.cell]) throw new Error('Instance "' + inst.name + '" uses cell "' + inst.cell + '" which is not in the loaded Liberty library');
+    }
+
+    /* --- net connectivity --- */
+    const nets = {}; // net -> {drivers:[{inst,pin,net}], loads:[...], portLoad:0}
+    function netRef(n) { if (!nets[n]) nets[n] = { drivers: [], loads: [], name: n }; return nets[n]; }
+    for (const [pname, dir] of Object.entries(flat.top.portDirs)) {
+      const r = netRef(pname);
+      if (dir === 'input') r.drivers.push({ port: pname });
+      else if (dir === 'output') r.loads.push({ port: pname });
+      else { r.drivers.push({ port: pname }); r.loads.push({ port: pname }); }
+    }
+    for (const inst of insts) {
+      const cell = lib.cells[inst.cell];
+      for (const [pin, net] of Object.entries(inst.conns)) {
+        const pd = cell.pins[pin];
+        if (!pd) throw new Error('Instance "' + inst.name + '": pin "' + pin + '" not found on cell ' + inst.cell);
+        if (pd.dir === 'output') netRef(net).drivers.push({ inst: inst.name, pin });
+        else netRef(net).loads.push({ inst: inst.name, pin });
+      }
+    }
+
+    /* --- pin nodes --- */
+    // node key: 'P:<port>' or 'I:<inst>/<pin>'
+    const nodeKeyPort = p => 'P:' + p;
+    const nodeKeyPin = (i, p) => 'I:' + i + '/' + p;
+    const nodes = {}; // key -> {kind, arrival:[2], slew:[2], pred:[2] {node, edge, via, delay, arcInfo}, ready}
+    function getNode(k) { if (!nodes[k]) nodes[k] = { key: k, arrival: [null, null], slew: [null, null], pred: [null, null], minArrival: [null, null] }; return nodes[k]; }
+
+    /* --- clock definition --- */
+    const clockPeriods = {}; // net -> period
+    for (const [port, c] of Object.entries(sdc.clocks)) {
+      if (c.period == null) throw new Error('create_clock on port "' + port + '" has no -period');
+      clockPeriods[port] = c.period;
+    }
+    // find clock nets: nets driven by clock ports
+    const clockNets = new Set(Object.keys(clockPeriods));
+
+    /* --- build propagation graph --- */
+    // arcs: from node -> to node with {delay(e, load), via, arcInfo}
+    const outArcs = {}; // key -> [arc]
+    function addArc(from, to, mk, info) {
+      if (!outArcs[from]) outArcs[from] = [];
+      outArcs[from].push({ to, mk, info });
+    }
+
+    // helper: load capacitance seen by an output pin
+    function netLoad(netName) {
+      const r = nets[netName];
+      let c = r.portLoad || 0;
+      for (const l of r.loads) {
+        if (l.port) { c += (sdc.loads[l.port] || 0); continue; }
+        const cell = lib.cells[instByName[l.inst].cell];
+        c += cell.pins[l.pin].cap;
+      }
+      return c;
+    }
+    const instByName = {};
+    for (const inst of insts) instByName[inst.name] = inst;
+
+    for (const inst of insts) {
+      const cell = lib.cells[inst.cell];
+      for (const [pinName, pin] of Object.entries(cell.pins)) {
+        if (pin.dir !== 'output') continue;
+        const outNet = inst.conns[pinName];
+        const load = () => netLoad(outNet);
+        for (const arc of pin.arcs) {
+          if (arc.type === 'combinational') {
+            const fromKey = nodeKeyPin(inst.name, arc.related);
+            const toKey = nodeKeyPin(inst.name, pinName);
+            addArc(fromKey, toKey, (edge, slew, _) => {
+              const delay = edge === RISE ? arc.cellRise : arc.cellFall;
+              const trans = edge === RISE ? arc.riseTrans : arc.fallTrans;
+              if (!delay || !trans) return null;
+              return { delay: lookup(delay, slew, load()), slew: lookup(trans, slew, load()) };
+            }, { kind: 'cell', inst: inst.name, cell: inst.cell, from: arc.related, to: pinName, sense: arc.sense });
+          } else if (arc.type === 'rising_edge' || arc.type === 'falling_edge') {
+            // sequential launch: CK -> Q, edge relation handled at propagation
+            const fromKey = nodeKeyPin(inst.name, arc.related);
+            const toKey = nodeKeyPin(inst.name, pinName);
+            addArc(fromKey, toKey, (edge, slew, _, inEdge) => {
+              // output edge determined by arc; we compute per inEdge at propagation time
+              const outEdge = edge; // caller resolves
+              const delay = outEdge === RISE ? arc.cellRise : arc.cellFall;
+              const trans = outEdge === RISE ? arc.riseTrans : arc.fallTrans;
+              if (!delay || !trans) return null;
+              return { delay: lookup(delay, slew, load()), slew: lookup(trans, slew, load()), edgeOut: outEdge };
+            }, { kind: 'seq', inst: inst.name, cell: inst.cell, from: arc.related, to: pinName, type: arc.type });
+          }
+          // constraint arcs (setup/hold) are endpoints, not propagation
+        }
+      }
+    }
+    // helper: is this load pin the clock pin of a sequential cell? (ideal-clock assumption)
+    function isSeqClockPin(load) {
+      if (!load.inst) return false;
+      const inst = instByName[load.inst];
+      const cell = lib.cells[inst.cell];
+      if (!cell.isSequential) return false;
+      return !!cell.pins[load.pin] && cell.pins[load.pin].isClock;
+    }
+    // net arcs: driver node (port or pin) -> each load pin
+    for (const [netName, r] of Object.entries(nets)) {
+      if (!r.drivers.length || !r.loads.length) continue;
+      const nLoads = r.loads.length;
+      const netDelay = netDelayPerFanout * Math.max(0, nLoads - 1);
+      for (const d of r.drivers) {
+        const fromKey = d.port ? nodeKeyPort(d.port) : nodeKeyPin(d.inst, d.pin);
+        for (const l of r.loads) {
+          if (l.port) continue; // output port handled as endpoint
+          if (isSeqClockPin(l)) continue; // ideal clocks: arrival defined at the clock port
+          const toKey = nodeKeyPin(l.inst, l.pin);
+          addArc(fromKey, toKey, () => ({ delay: netDelay, slew: null, passSlew: true }), { kind: 'net', net: netName, fanout: nLoads });
+        }
+      }
+    }
+
+    /* --- start points --- */
+    const starts = [];
+    // input ports
+    for (const [pname, dir] of Object.entries(flat.top.portDirs)) {
+      if (dir !== 'input') continue;
+      const k = nodeKeyPort(pname);
+      const nd = getNode(k);
+      const d = sdc.inputDelays[pname] || 0;
+      const sl = sdc.inputTransitions[pname] !== undefined ? sdc.inputTransitions[pname] : defaultInputSlew;
+      nd.arrival[RISE] = nd.arrival[FALL] = d;
+      nd.minArrival[RISE] = nd.minArrival[FALL] = d;
+      nd.slew[RISE] = nd.slew[FALL] = sl;
+      starts.push(k);
+    }
+    // clock pins of sequential cells: clock arrival = 0 (ideal)
+    for (const inst of insts) {
+      const cell = lib.cells[inst.cell];
+      if (!cell.isSequential) continue;
+      // find clock pin: pin marked clock, or the related pin of seq arcs
+      let ckPin = null;
+      for (const [pn, pd] of Object.entries(cell.pins)) if (pd.isClock) { ckPin = pn; break; }
+      if (!ckPin) {
+        outer: for (const [pn, pd] of Object.entries(cell.pins)) {
+          for (const arc of pd.arcs) {
+            if (arc.type === 'rising_edge' || arc.type === 'falling_edge') { ckPin = arc.related; break outer; }
+          }
+        }
+      }
+      if (!ckPin) { warnings.push(inst.name + ': sequential cell with no identifiable clock pin'); continue; }
+      const ckNet = inst.conns[ckPin];
+      if (clockNets.has(ckNet)) {
+        const k = nodeKeyPin(inst.name, ckPin);
+        const nd = getNode(k);
+        nd.arrival[RISE] = nd.arrival[FALL] = 0;
+        nd.minArrival[RISE] = nd.minArrival[FALL] = 0;
+        nd.slew[RISE] = nd.slew[FALL] = defaultInputSlew;
+        starts.push(k);
+      } else {
+        warnings.push('Sequential instance "' + inst.name + '" clock pin "' + ckPin + '" (net ' + ckNet + ') has no create_clock — its timing is not analyzed');
+      }
+    }
+
+    /* --- topological propagation (Kahn) --- */
+    const inDeg = {};
+    for (const k of Object.keys(nodes)) inDeg[k] = 0;
+    const dependents = {}; // k -> [toKey]
+    for (const [from, arcs] of Object.entries(outArcs)) {
+      for (const a of arcs) {
+        getNode(a.to); // ensure exists
+        inDeg[a.to] = (inDeg[a.to] || 0) + 1;
+        (dependents[from] = dependents[from] || []).push(a.to);
+      }
+    }
+    const queue = starts.filter(k => (inDeg[k] || 0) === 0);
+    if (starts.some(k => (inDeg[k] || 0) > 0)) {
+      throw new Error('Combinational loop detected: a start point has incoming arcs (feedback through combinational logic is not analyzable)');
+    }
+    const processed = new Set();
+    while (queue.length) {
+      const k = queue.shift();
+      if (processed.has(k)) continue;
+      processed.add(k);
+      const nd = nodes[k];
+      for (const arc of (outArcs[k] || [])) {
+        const dst = getNode(arc.to);
+        let touched = false;
+        // For seq launch arcs, edge relation: CK rise launches both Q rise & fall (rising_edge)
+        for (const inEdge of [RISE, FALL]) {
+          if (nd.arrival[inEdge] == null) continue;
+          const mk = arc.mk;
+          let res;
+          if (arc.info.kind === 'seq') {
+            if (arc.info.type === 'rising_edge' && inEdge !== RISE) continue;
+            if (arc.info.type === 'falling_edge' && inEdge !== FALL) continue;
+            for (const outEdge of [RISE, FALL]) {
+              res = mk(outEdge, nd.slew[inEdge]);
+              if (!res) continue;
+              const arr = nd.arrival[inEdge] + res.delay;
+              if (dst.arrival[outEdge] == null || arr > dst.arrival[outEdge]) {
+                dst.arrival[outEdge] = arr;
+                dst.slew[outEdge] = res.slew;
+                dst.pred[outEdge] = { node: k, edge: inEdge, via: 'seq', delay: res.delay, arcInfo: arc.info };
+              }
+              const arrMin = nd.minArrival[inEdge] + res.delay;
+              if (dst.minArrival[outEdge] == null || arrMin < dst.minArrival[outEdge]) dst.minArrival[outEdge] = arrMin;
+            }
+            touched = true;
+            continue;
+          }
+          // combinational / net arcs: unateness
+          const senses = arc.info.sense || 'non_unate';
+          for (const outEdge of [RISE, FALL]) {
+            let use = false;
+            if (arc.info.kind === 'net') use = true;
+            else if (senses === 'positive_unate') use = (outEdge === inEdge);
+            else if (senses === 'negative_unate') use = (outEdge !== inEdge);
+            else use = true;
+            if (!use) continue;
+            res = mk(outEdge, nd.slew[inEdge], null, inEdge);
+            if (!res) continue;
+            const arr = nd.arrival[inEdge] + res.delay;
+            if (dst.arrival[outEdge] == null || arr > dst.arrival[outEdge]) {
+              dst.arrival[outEdge] = arr;
+              dst.slew[outEdge] = res.passSlew ? nd.slew[inEdge] : res.slew;
+              dst.pred[outEdge] = { node: k, edge: inEdge, via: arc.info.kind, delay: res.delay, arcInfo: arc.info };
+            }
+            const arrMin = nd.minArrival[inEdge] + res.delay;
+            if (dst.minArrival[outEdge] == null || arrMin < dst.minArrival[outEdge]) dst.minArrival[outEdge] = arrMin;
+          }
+          touched = true;
+        }
+        void touched;
+        inDeg[arc.to]--;
+        if (inDeg[arc.to] === 0) queue.push(arc.to);
+      }
+    }
+    // detect remaining nodes (loops)
+    const unprocessed = Object.keys(nodes).filter(k => !processed.has(k) && (nodes[k].arrival[RISE] != null || nodes[k].arrival[FALL] != null || true)).filter(k => !processed.has(k));
+    if (unprocessed.length) {
+      throw new Error('Combinational loop detected involving: ' + unprocessed.slice(0, 5).join(', ') + (unprocessed.length > 5 ? ' …' : ''));
+    }
+
+    /* --- endpoints & slack --- */
+    const endpoints = [];
+    // sequential D pins (setup/hold)
+    for (const inst of insts) {
+      const cell = lib.cells[inst.cell];
+      if (!cell.isSequential) continue;
+      for (const [pinName, pin] of Object.entries(cell.pins)) {
+        if (pin.dir !== 'input') continue;
+        const conArcs = pin.arcs.filter(a => a.type === 'setup_rising' || a.type === 'hold_rising');
+        if (!conArcs.length) continue;
+        const k = nodeKeyPin(inst.name, pinName);
+        const nd = nodes[k];
+        if (!nd || (nd.arrival[RISE] == null && nd.arrival[FALL] == null)) {
+          warnings.push('Endpoint ' + k + ' has no arrival (unconnected input)');
+          continue;
+        }
+        const ckNetName = inst.conns[Object.keys(cell.pins).find(pn => cell.pins[pn].isClock) || ''];
+        const period = clockNets.has(ckNetName) ? clockPeriods[ckNetName] : null;
+        if (period == null) continue;
+        // setup / hold values
+        let setup = 0, hold = 0;
+        for (const a of conArcs) {
+          if (a.type === 'setup_rising' && (a.riseConstraint || a.fallConstraint)) {
+            const t = a.riseConstraint || a.fallConstraint;
+            setup = Math.max(setup, lookup(t, 0.02, 0.02));
+          }
+          if (a.type === 'hold_rising' && (a.riseConstraint || a.fallConstraint)) {
+            const t = a.riseConstraint || a.fallConstraint;
+            hold = Math.max(hold, lookup(t, 0.02, 0.02));
+          }
+        }
+        for (const edge of [RISE, FALL]) {
+          if (nd.arrival[edge] == null) continue;
+          const req = period - setup;
+          const slack = req - nd.arrival[edge];
+          endpoints.push({
+            kind: 'setup', node: k, inst: inst.name, pin: pinName, edge: edge === RISE ? 'rise' : 'fall',
+            arrival: nd.arrival[edge], required: req, setup, slack,
+            holdSlack: nd.minArrival[edge] != null ? nd.minArrival[edge] - hold : null, hold
+          });
+        }
+      }
+    }
+    // output ports
+    for (const [pname, dir] of Object.entries(flat.top.portDirs)) {
+      if (dir !== 'output') continue;
+      const k = nodeKeyPort(pname);
+      const nd = getNode(k);
+      // output port arrival = driver arrival (net to port has no further load pins)
+      const r = nets[pname];
+      if (r && r.drivers.length === 1 && r.drivers[0].inst) {
+        const dk = nodeKeyPin(r.drivers[0].inst, r.drivers[0].pin);
+        const dnd = nodes[dk];
+        if (dnd && (dnd.arrival[RISE] != null || dnd.arrival[FALL] != null)) {
+          nd.arrival[RISE] = dnd.arrival[RISE]; nd.arrival[FALL] = dnd.arrival[FALL];
+          nd.minArrival[RISE] = dnd.minArrival[RISE]; nd.minArrival[FALL] = dnd.minArrival[FALL];
+          nd.pred[RISE] = dnd.pred[RISE] ? { ...dnd.pred[RISE] } : null;
+          nd.pred[FALL] = dnd.pred[FALL] ? { ...dnd.pred[FALL] } : null;
+        }
+      }
+      if (!nd || (nd.arrival[RISE] == null && nd.arrival[FALL] == null)) continue;
+      // pick a period: nearest clock
+      const period = Object.values(clockPeriods)[0];
+      if (period == null) continue;
+      const od = sdc.outputDelays[pname] || 0;
+      for (const edge of [RISE, FALL]) {
+        if (nd.arrival[edge] == null) continue;
+        endpoints.push({
+          kind: 'output', node: k, inst: '(port)', pin: pname, edge: edge === RISE ? 'rise' : 'fall',
+          arrival: nd.arrival[edge], required: period - od, slack: period - od - nd.arrival[edge]
+        });
+      }
+    }
+
+    const timed = endpoints.filter(e => e.slack != null);
+    timed.sort((a, b) => a.slack - b.slack);
+    const wns = timed.length ? timed[0].slack : null;
+    const tns = timed.reduce((s, e) => s + Math.min(0, e.slack), 0);
+
+    /* --- path extraction --- */
+    function tracePath(ep) {
+      const edgeIdx = ep.edge === 'rise' ? RISE : FALL;
+      const stages = [];
+      let k = ep.node, edge = edgeIdx, guard = 0;
+      while (nodes[k] && nodes[k].pred[edge] && guard++ < 10000) {
+        const pr = nodes[k].pred[edge];
+        stages.unshift({
+          to: k, toEdge: edge === RISE ? 'rise' : 'fall',
+          from: pr.node, fromEdge: pr.edge === RISE ? 'rise' : 'fall',
+          delay: pr.delay, via: pr.via, arcInfo: pr.arcInfo
+        });
+        k = pr.node; edge = pr.edge;
+      }
+      return { start: k, startEdge: edge === RISE ? 'rise' : 'fall', stages };
+    }
+
+    const paths = timed.slice(0, opts.maxPaths || 12).map((ep, i) => ({
+      rank: i + 1, ...tracePath(ep), endpoint: ep
+    }));
+
+    return {
+      lib, top: flat.top.name, insts, nets: Object.keys(nets).length,
+      warnings, endpoints: timed, wns, tns, paths,
+      stats: {
+        cellCount: insts.length,
+        netCount: Object.keys(nets).length,
+        endpointCount: new Set(timed.map(e => e.node)).size,
+        sequentialCount: insts.filter(i => lib.cells[i.cell].isSequential).length
+      }
+    };
+  }
+
+  return { buildLibrary, parseNetlist, parseSDC, flatten, analyze, lookup };
+});
+
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+
+  /* ---------- realistic Liberty generator (28nm-class numbers) ---------- */
+  const SLEWS = [0.005, 0.02, 0.08];
+  const CAPS = [0.0008, 0.004, 0.02, 0.1];
+  function rowsOf(f) {
+    return SLEWS.map(s => '"' + CAPS.map(c => f(s, c).toFixed(4)).join(', ') + '"').join(',\n                 ');
+  }
+  function tbl(f) {
+    return 'index_1("' + SLEWS.join(', ') + '");\n          index_2("' + CAPS.join(', ') + '");\n          values(' + rowsOf(f) + ');';
+  }
+  function combArc(rp, sense, d0, dc, t0, tc) {
+    return `
+      timing () {
+        related_pin : "${rp}";
+        timing_sense : ${sense};
+        timing_type : combinational;
+        cell_rise () { ${tbl((s, c) => d0 + dc * c + 0.4 * s)} }
+        cell_fall () { ${tbl((s, c) => d0 + dc * c + 0.35 * s)} }
+        rise_transition () { ${tbl((s, c) => t0 + tc * c + 0.3 * s)} }
+        fall_transition () { ${tbl((s, c) => t0 + tc * c + 0.27 * s)} }
+      }`;
+  }
+  function pinIn(name, cap) { return `pin (${name}) { direction : input; capacitance : ${cap}; }`; }
+  function pinOut(name, fn, arcs) { return `pin (${name}) { direction : output; function : "${fn}";${arcs} }`; }
+  const LIB_GEN = `library (yantra28) {
+  time_unit : "1ns";
+  capacitance_unit : "1pf";
+  voltage_unit : "1V";
+  cell (INV) { area : 0.8; ${pinIn('A', 0.0012)}
+    ${pinOut('Z', "A'", combArc('A', 'negative_unate', 0.006, 0.32, 0.006, 0.30))}
+  }
+  cell (BUF) { area : 1.0; ${pinIn('A', 0.0015)}
+    ${pinOut('Z', 'A', combArc('A', 'positive_unate', 0.008, 0.30, 0.007, 0.28))}
+  }
+  cell (NAND2) { area : 1.2; ${pinIn('A', 0.0013)} ${pinIn('B', 0.0013)}
+    ${pinOut('Z', '(A B)\'', combArc('A', 'negative_unate', 0.005, 0.28, 0.007, 0.26) + combArc('B', 'negative_unate', 0.005, 0.28, 0.007, 0.26))}
+  }
+  cell (NOR2) { area : 1.2; ${pinIn('A', 0.0013)} ${pinIn('B', 0.0013)}
+    ${pinOut('Z', '(A+B)\'', combArc('A', 'negative_unate', 0.008, 0.30, 0.009, 0.28) + combArc('B', 'negative_unate', 0.008, 0.30, 0.009, 0.28))}
+  }
+  cell (XOR2) { area : 2.2; ${pinIn('A', 0.0020)} ${pinIn('B', 0.0020)}
+    ${pinOut('Z', 'A^B', combArc('A', 'non_unate', 0.014, 0.34, 0.012, 0.30) + combArc('B', 'non_unate', 0.014, 0.34, 0.012, 0.30))}
+  }
+  cell (AND2) { area : 1.5; ${pinIn('A', 0.0013)} ${pinIn('B', 0.0013)}
+    ${pinOut('Z', 'A&B', combArc('A', 'positive_unate', 0.011, 0.30, 0.009, 0.28) + combArc('B', 'positive_unate', 0.011, 0.30, 0.009, 0.28))}
+  }
+  cell (OR2) { area : 1.5; ${pinIn('A', 0.0013)} ${pinIn('B', 0.0013)}
+    ${pinOut('Z', 'A|B', combArc('A', 'positive_unate', 0.011, 0.31, 0.009, 0.29) + combArc('B', 'positive_unate', 0.011, 0.31, 0.009, 0.29))}
+  }
+  cell (DFF) { area : 5.0;
+    pin (D) { direction : input; capacitance : 0.0015;
+      timing () {
+        related_pin : "CK"; timing_sense : non_unate; timing_type : setup_rising;
+        rise_constraint () { index_1("0.005"); index_2("0.005"); values("0.022"); }
+        fall_constraint () { index_1("0.005"); index_2("0.005"); values("0.020"); }
+      }
+      timing () {
+        related_pin : "CK"; timing_sense : non_unate; timing_type : hold_rising;
+        rise_constraint () { index_1("0.005"); index_2("0.005"); values("0.012"); }
+        fall_constraint () { index_1("0.005"); index_2("0.005"); values("0.010"); }
+      }
+    }
+    pin (CK) { direction : input; clock : true; capacitance : 0.0022; }
+    pin (Q) { direction : output; function : "D";
+      timing () {
+        related_pin : "CK"; timing_sense : non_unate; timing_type : rising_edge;
+        cell_rise () { ${tbl((s, c) => 0.038 + 0.30 * c + 0.35 * s)} }
+        cell_fall () { ${tbl((s, c) => 0.040 + 0.30 * c + 0.33 * s)} }
+        rise_transition () { ${tbl((s, c) => 0.020 + 0.26 * c + 0.30 * s)} }
+        fall_transition () { ${tbl((s, c) => 0.019 + 0.26 * c + 0.28 * s)} }
+      }
+    }
+  }
+}
+`;
+
+  /* ---------- example designs ---------- */
+  const NL_PIPELINE = `// Pipeline register stage: FF -> INV -> NAND -> INV -> FF
+module pipeline (clk, d, q);
+input clk, d;
+output q;
+wire n1, n2, n3, n4;
+DFF ff1 (.D(d), .CK(clk), .Q(n1));
+INV i1 (.A(n1), .Z(n2));
+NAND2 g1 (.A(n1), .B(n2), .Z(n3));
+INV i2 (.A(n3), .Z(n4));
+DFF ff2 (.D(n4), .CK(clk), .Q(q));
+endmodule
+`;
+  const NL_PIPELINE_TIGHT = NL_PIPELINE;
+  const SDC_PIPELINE = `create_clock -name clk -period 0.5 [get_ports clk]
+`;
+  const SDC_PIPELINE_TIGHT = `create_clock -name clk -period 0.10 [get_ports clk]
+`;
+  const NL_ADDER = `// 4-bit ripple-carry adder — hierarchical (full adder instantiated 4x)
+module adder4 (a0, a1, a2, a3, b0, b1, b2, b3, cin, s0, s1, s2, s3, cout);
+input a0, a1, a2, a3, b0, b1, b2, b3, cin;
+output s0, s1, s2, s3, cout;
+wire c1, c2, c3;
+fa f0 (.A(a0), .B(b0), .CIN(cin), .S(s0), .COUT(c1));
+fa f1 (.A(a1), .B(b1), .CIN(c1), .S(s1), .COUT(c2));
+fa f2 (.A(a2), .B(b2), .CIN(c2), .S(s2), .COUT(c3));
+fa f3 (.A(a3), .B(b3), .CIN(c3), .S(s3), .COUT(cout));
+endmodule
+
+module fa (A, B, CIN, S, COUT);
+input A, B, CIN;
+output S, COUT;
+wire x, t1, t2;
+XOR2 gx (.A(A), .B(B), .Z(x));
+XOR2 gs (.A(x), .B(CIN), .Z(S));
+AND2 ga (.A(A), .B(B), .Z(t1));
+AND2 gb (.A(x), .B(CIN), .Z(t2));
+OR2 go (.A(t1), .B(t2), .Z(COUT));
+endmodule
+`;
+  const SDC_ADDER = `create_clock -name clk -period 1.0 [get_ports a0]
+set_input_delay 0.1 [get_ports {a0 a1 a2 a3 b0 b1 b2 b3 cin}]
+set_output_delay 0.05 [get_ports {s0 s1 s2 s3 cout}]
+`;
+  const NL_FANOUT = `// Fanout tree: high-fanout buffer chain vs single net
+module fanout (clk, d, q0, q1, q2, q3, q4, q5);
+input clk, d;
+output q0, q1, q2, q3, q4, q5;
+wire n1, m0, m1;
+DFF ff0 (.D(d), .CK(clk), .Q(n1));
+BUF b0 (.A(n1), .Z(m0));
+BUF b1 (.A(m0), .Z(m1));
+INV o0 (.A(m1), .Z(q0));
+INV o1 (.A(m1), .Z(q1));
+INV o2 (.A(m1), .Z(q2));
+INV o3 (.A(m1), .Z(q3));
+INV o4 (.A(m1), .Z(q4));
+INV o5 (.A(m1), .Z(q5));
+endmodule
+`;
+  const SDC_FANOUT = `create_clock -name clk -period 0.25 [get_ports clk]
+`;
+
+  const EXAMPLES = {
+    'Pipeline stage (setup + hold)': { lib: LIB_GEN, nl: NL_PIPELINE, sdc: SDC_PIPELINE, top: 'pipeline' },
+    'Pipeline — timing VIOLATION (tight clock)': { lib: LIB_GEN, nl: NL_PIPELINE_TIGHT, sdc: SDC_PIPELINE_TIGHT, top: 'pipeline' },
+    '4-bit ripple-carry adder (hierarchical)': { lib: LIB_GEN, nl: NL_ADDER, sdc: SDC_ADDER, top: 'adder4' },
+    'High-fanout buffer tree': { lib: LIB_GEN, nl: NL_FANOUT, sdc: SDC_FANOUT, top: 'fanout' }
+  };
+  const exSel = $('#examples');
+  for (const k of Object.keys(EXAMPLES)) { const o = document.createElement('option'); o.textContent = k; exSel.appendChild(o); }
+  exSel.addEventListener('change', () => {
+    if (exSel.value && EXAMPLES[exSel.value]) {
+      const ex = EXAMPLES[exSel.value];
+      $('#lib').value = ex.lib; $('#netlist').value = ex.nl; $('#sdc').value = ex.sdc;
+      runSTA(ex.top);
+    }
+    exSel.value = '';
+  });
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $('#pane-' + b.id.replace('tab-', '')).classList.add('active');
+  }));
+
+  $('#lib').value = LIB_GEN;
+  $('#netlist').value = NL_PIPELINE;
+  $('#sdc').value = SDC_PIPELINE;
+
+  /* ---------- run ---------- */
+  let lastResult = null, selPath = 0;
+
+  function setStatus(msg, cls) { const s = $('#status'); s.textContent = msg; s.className = cls || ''; }
+
+  function runSTA(topOverride) {
+    setStatus('Running…');
+    try {
+      const t0 = performance.now();
+      void 0;
+      const netDelay = (parseFloat($('#netdelay').value) || 0) / 1000; // ps -> ns
+      const inSlew = (parseFloat($('#inslew').value) || 20) / 1000;
+      const r = TimingCore.analyze($('#lib').value, $('#netlist').value, $('#sdc').value,
+        topOverride || null, { netDelayPerFanout: netDelay, defaultInputSlew: inSlew, maxPaths: 12 });
+      lastResult = r; selPath = 0;
+      const dt = (performance.now() - t0).toFixed(0);
+      setStatus('Done (' + dt + ' ms)', 'ok');
+      render();
+    } catch (e) {
+      setStatus(e.message, 'err');
+      lastResult = null;
+      $('#cards').innerHTML = ''; $('#pathtbl').innerHTML = ''; $('#pathdetail').style.display = 'none';
+      $('#warnbox').textContent = '';
+    }
+  }
+  $('#run').addEventListener('click', () => runSTA());
+
+  document.querySelectorAll('.pane textarea').forEach(t => t.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSTA(); }
+    if (e.key === 'Tab') { e.preventDefault(); const s = t.selectionStart; t.setRangeText('  ', s, t.selectionEnd, 'end'); }
+  }));
+
+  /* ---------- render results ---------- */
+  function render() {
+    const r = lastResult; if (!r) return;
+    const cards = [
+      { num: r.stats.cellCount, lbl: 'cells' },
+      { num: r.stats.netCount, lbl: 'nets' },
+      { num: r.stats.sequentialCount, lbl: 'sequential' },
+      { num: r.stats.endpointCount, lbl: 'endpoint pins' },
+      { num: (r.wns * 1000).toFixed(1) + ' ps', lbl: 'WNS (setup)', cls: r.wns < 0 ? 'neg' : 'pos' },
+      { num: (r.tns * 1000).toFixed(1) + ' ps', lbl: 'TNS', cls: r.tns < 0 ? 'neg' : 'pos' },
+    ];
+    $('#cards').innerHTML = cards.map(c =>
+      '<div class="card"><div class="num ' + (c.cls || '') + '">' + c.num + '</div><div class="lbl">' + c.lbl + '</div></div>').join('');
+
+    // path table
+    let html = '<table class="tbl"><thead><tr><th>#</th><th>endpoint</th><th>edge</th><th>arrival</th><th>required</th><th>slack</th></tr></thead><tbody>';
+    for (const p of r.paths) {
+      const e = p.endpoint;
+      html += '<tr class="pathrow' + (p.rank === selPath ? ' sel' : '') + '" data-rank="' + p.rank + '">' +
+        '<td class="mono">' + p.rank + '</td><td class="mono">' + e.node + '</td><td class="mono">' + e.edge + '</td>' +
+        '<td class="mono">' + (e.arrival * 1000).toFixed(1) + ' ps</td>' +
+        '<td class="mono">' + (e.required * 1000).toFixed(1) + ' ps</td>' +
+        '<td class="mono ' + (e.slack < 0 ? 'neg' : 'pos') + '">' + (e.slack * 1000).toFixed(1) + ' ps</td></tr>';
+    }
+    html += '</tbody></table>';
+    $('#pathtbl').innerHTML = html;
+    document.querySelectorAll('.pathrow').forEach(row => row.addEventListener('click', () => {
+      selPath = parseInt(row.dataset.rank, 10); render();
+    }));
+
+    renderPathDetail();
+    renderHist();
+
+    const w = (r.warnings || []).map(x => '⚠ ' + x).join('<br>');
+    $('#warnbox').innerHTML = w;
+  }
+
+  function renderPathDetail() {
+    const r = lastResult; if (!r || !r.paths.length) { $('#pathdetail').style.display = 'none'; return; }
+    const p = r.paths[selPath - 1] || r.paths[0];
+    const e = p.endpoint;
+    let cum = 0;
+    const maxd = Math.max(...p.stages.map(s => s.delay), 1e-12);
+    let html = '<h4>Critical path #' + p.rank + ' &nbsp;→&nbsp; ' + e.node + ' (' + e.edge + ') &nbsp;·&nbsp; slack ' +
+      '<span class="' + (e.slack < 0 ? 'neg' : 'pos') + '">' + (e.slack * 1000).toFixed(1) + ' ps</span>' +
+      ' &nbsp;·&nbsp; ' + p.stages.length + ' stages</h4>';
+    html += '<div class="stage" style="color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px"><div>#</div><div>stage</div><div>arc</div><div>edge</div><div>delay</div><div class="d">cum</div></div>';
+    p.stages.forEach((s, i) => {
+      cum += s.delay;
+      let name, arc;
+      if (s.via === 'net') { name = 'net ' + s.arcInfo.net; arc = '→ ' + (s.loads || '') + ' fanout ' + (s.arcInfo.fanout || 1); }
+      else {
+        name = (s.arcInfo.inst || '') + ' [' + (s.arcInfo.cell || '') + ']';
+        arc = (s.arcInfo.from || '') + ' → ' + (s.arcInfo.to || '');
+      }
+      const w = Math.max(1.5, (s.delay / maxd) * 100);
+      html += '<div class="stage"><div>' + (i + 1) + '</div><div style="overflow:hidden;text-overflow:ellipsis">' + name + '</div>' +
+        '<div style="color:var(--muted)">' + arc + (s.via === 'seq' ? ' (clk→Q)' : '') + '</div>' +
+        '<div>' + (s.fromEdge || '') + '→' + s.toEdge + '</div>' +
+        '<div><div class="bar' + (s.via === 'net' ? ' net' : '') + '" style="width:' + w + '%"></div></div>' +
+        '<div class="d">' + (cum * 1000).toFixed(1) + '</div></div>';
+    });
+    const endInfo = e.kind === 'setup' ? 'setup ' + (e.setup * 1000).toFixed(1) + ' ps @ capture FF' : 'output delay';
+    html += '<div class="stage" style="border-top:1px solid var(--border); margin-top:4px; padding-top:6px"><div></div><div>arrival</div><div style="color:var(--muted)">' + endInfo + '</div><div></div><div></div><div class="d">' + (e.arrival * 1000).toFixed(1) + '</div></div>';
+    if (e.holdSlack != null) {
+      html += '<div style="margin-top:8px; font-size:12px; font-family:var(--mono)">hold slack at this pin: <span class="' + (e.holdSlack < 0 ? 'neg' : 'pos') + '">' + (e.holdSlack * 1000).toFixed(1) + ' ps</span></div>';
+    }
+    const d = $('#pathdetail');
+    d.innerHTML = html;
+    d.style.display = 'block';
+  }
+
+  function renderHist() {
+    const r = lastResult; if (!r || !r.endpoints.length) return;
+    const cv = $('#hist'), dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth || 600, H = 130;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const slacks = r.endpoints.map(e => e.slack * 1000); // ps
+    const mn = Math.min(...slacks), mx = Math.max(...slacks);
+    const pad = Math.max(4, (mx - mn) * 0.06);
+    const lo = mn - pad, hi = mx + pad;
+    const NB = 18;
+    const bins = new Array(NB).fill(0);
+    for (const s of slacks) {
+      let b = Math.floor((s - lo) / (hi - lo) * NB);
+      bins[Math.max(0, Math.min(NB - 1, b))]++;
+    }
+    const maxb = Math.max(...bins);
+    const M = { l: 14, r: 14, t: 10, b: 22 };
+    const bw = (W - M.l - M.r) / NB;
+    for (let i = 0; i < NB; i++) {
+      const h = (bins[i] / maxb) * (H - M.t - M.b);
+      const x = M.l + i * bw;
+      const mid = lo + (i + 0.5) / NB * (hi - lo);
+      ctx.fillStyle = mid < 0 ? 'rgba(248,81,73,.75)' : 'rgba(78,161,255,.75)';
+      ctx.fillRect(x + 1, H - M.b - h, bw - 2, h);
+    }
+    ctx.strokeStyle = '#3a465a'; ctx.beginPath();
+    const zx = M.l + (0 - lo) / (hi - lo) * (W - M.l - M.r);
+    if (zx >= M.l && zx <= W - M.r) { ctx.moveTo(zx, M.t); ctx.lineTo(zx, H - M.b); ctx.stroke(); }
+    ctx.fillStyle = '#8b96a5'; ctx.font = '10.5px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText(lo.toFixed(0) + ' ps', M.l, H - 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(hi.toFixed(0) + ' ps', W - M.r, H - 6);
+    ctx.textAlign = 'center';
+    ctx.fillText('endpoint slack', W / 2, H - 6);
+  }
+  window.addEventListener('resize', () => { if (lastResult) { renderHist(); } });
+
+  runSTA();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPICE Studio — open circuit simulator for chip designers</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #1c2330; --border: #2d3748;
+    --text: #d7dde6; --muted: #8b96a5; --accent: #4ea1ff; --accent2: #ff9e42;
+    --ok: #3fb950; --err: #f85149; --mono: 'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+    font-size: 14px; display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+    background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: baseline; gap: 9px; }
+  .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
+  .logo h1 span { color: var(--accent); }
+  .logo .tag { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .pill {
+    font-size: 11px; color: var(--accent); border: 1px solid var(--border);
+    border-radius: 20px; padding: 3px 10px; background: rgba(78,161,255,.08);
+  }
+  main { flex: 1; display: flex; min-height: 0; }
+
+  /* left panel */
+  #left {
+    width: 46%; min-width: 380px; display: flex; flex-direction: column;
+    border-right: 1px solid var(--border); background: var(--bg2);
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tabs button {
+    background: none; border: none; color: var(--muted); padding: 9px 16px;
+    font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); background: var(--bg3); }
+  .pane { flex: 1; display: none; flex-direction: column; min-height: 0; }
+  .pane.active { display: flex; }
+  #netlist {
+    flex: 1; width: 100%; resize: none; border: none; outline: none;
+    background: var(--bg); color: #c9d8e8; font-family: var(--mono);
+    font-size: 13px; line-height: 1.55; padding: 14px; tab-size: 8;
+  }
+  #netlist::selection { background: rgba(78,161,255,.35); }
+  .leftbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-top: 1px solid var(--border); flex-wrap: wrap; flex-shrink: 0;
+  }
+  select, .btn {
+    background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 11px; font-size: 12.5px; cursor: pointer;
+  }
+  .btn:hover, select:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #06111f; font-weight: 700; }
+  .btn.primary:hover { background: #6db2ff; }
+  #status { font-size: 12px; color: var(--muted); margin-left: auto; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+
+  /* help pane */
+  .help { padding: 18px 22px; overflow-y: auto; line-height: 1.65; font-size: 13px; }
+  .help h3 { margin: 14px 0 6px; color: var(--accent); font-size: 14px; }
+  .help code, .exnetlist { font-family: var(--mono); font-size: 12.5px; background: var(--bg); padding: 1px 5px; border-radius: 4px; color: #9fd0ff; }
+  .help table { border-collapse: collapse; margin: 6px 0; width: 100%; }
+  .help td { border: 1px solid var(--border); padding: 4px 8px; vertical-align: top; }
+  .help .s { color: var(--accent2); }
+  pre.ex { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 6px 0; overflow-x: auto; color: #b8c6d9; }
+
+  /* right panel */
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #plotwrap { flex: 1; position: relative; min-height: 120px; }
+  canvas#plot { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #traces { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; flex-shrink: 0; background: var(--bg2); max-height: 110px; overflow-y: auto; }
+  .trace-chip { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; cursor: pointer; user-select: none; }
+  .trace-chip .sw { width: 14px; height: 3px; border-radius: 2px; }
+  .trace-chip.off { opacity: .38; }
+  #resultsbar { border-top: 1px solid var(--border); background: var(--bg2); padding: 6px 12px; font-size: 12px; color: var(--muted); flex-shrink: 0; display: flex; gap: 14px; flex-wrap: wrap; }
+  #optable { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-family: var(--mono); font-size: 12.5px; box-shadow: 0 8px 30px rgba(0,0,0,.5); z-index: 5; max-height: 70%; overflow: auto; }
+  #optable td { padding: 2px 10px; }
+  #optable td:first-child { color: var(--accent2); }
+  .resselect { padding: 5px 8px; }
+  @media (max-width: 950px) {
+    main { flex-direction: column; }
+    #left { width: 100%; min-width: 0; height: 45%; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <h1>SPICE<span>Studio</span></h1>
+    <span class="tag">open analog & mixed-signal simulation — runs entirely in your browser, free forever</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill">v0.1 · prototype</span>
+</header>
+
+<main>
+  <div id="left">
+    <div class="tabs">
+      <button id="tab-netlist" class="active">Netlist</button>
+      <button id="tab-help">Syntax help</button>
+      <button id="tab-about">Why this exists</button>
+    </div>
+
+    <div class="pane active" id="pane-netlist">
+      <textarea id="netlist" spellcheck="false"></textarea>
+      <div class="leftbar">
+        <select id="examples" title="Load an example circuit">
+          <option value="">— load example —</option>
+        </select>
+        <button class="btn primary" id="run">▸ Run</button>
+        <button class="btn" id="csv" title="Export plotted data as CSV">Export CSV</button>
+        <button class="btn" id="save" title="Save to this browser">Save</button>
+        <button class="btn" id="load" title="Restore saved netlist">Load</button>
+        <span id="status"></span>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-help">
+      <div class="help">
+        <h3>What SPICE Studio simulates</h3>
+        <table>
+          <tr><td><b>Analyses</b></td><td><code>.op</code> DC operating point · <code>.dc</code> source sweep · <code>.tran</code> transient (trapezoidal integration, adaptive step, waveform breakpoints)</td></tr>
+          <tr><td><b>Elements</b></td><td><code>R</code> <code>C</code> <code>L</code> · sources <code>V</code>/<code>I</code> (DC, <code>SIN</code>, <code>PULSE</code>) · diode <code>D</code> · MOSFET <code>M</code> (Level-1 square law, NMOS/PMOS, D-S swap) · <code>.subckt</code> hierarchy · <code>.ic</code> initial conditions</td></tr>
+        </table>
+        <h3>Netlist quick reference</h3>
+        <pre class="ex"><span class="s">* comment (star in column 1)</span>
+Vdd vdd 0 DC 1.8                <span class="s">source: name n+ n- value</span>
+Vin in 0 PULSE(0 1.8 0 1n 1n 2n 4n)
+R1 in out 1k                     <span class="s">suffixes: t g meg k m u n p f</span>
+C1 out 0 10p
+M1 out in 0 0 nmos L=0.18u W=1u  <span class="s">drain gate source bulk model</span>
+D1 a 0 diode
+.model nmos nmos level=1 vto=0.5 kp=120u lambda=0.05 gamma=0.4
+.tran 1n 200n                    <span class="s">tstep tstop</span>
+.dc Vin 0 1.8 0.01               <span class="s">source start stop step</span>
+.op
+.ic v(a)=0                       <span class="s">kick oscillators / set startup state</span></pre>
+        <h3>MOS Level-1 model parameters</h3>
+        <table>
+          <tr><td><code>vto</code></td><td>threshold (negative for PMOS model) — default ±0.7 V</td></tr>
+          <tr><td><code>kp</code></td><td>transconductance, A/V² — default 120µ</td></tr>
+          <tr><td><code>lambda</code></td><td>channel-length modulation — default 0.02</td></tr>
+          <tr><td><code>gamma</code>, <code>phi</code></td><td>body effect — default 0 / 0.6</td></tr>
+        </table>
+        <h3>Tips for IC designers</h3>
+        • Put a small load capacitor on every digital node — real gates always see fan-out load, and oscillators need <code>.ic</code> to break symmetry (a perfect ring at its metastable point is a valid DC solution!).<br>
+        • Node names are case-insensitive; ground is always <code>0</code>.<br>
+        • Pick <code>tstep</code> at least 10× smaller than the fastest edge you care about.
+      </div>
+    </div>
+
+    <div class="pane" id="pane-about">
+      <div class="help">
+        <h3>Why this tool exists</h3>
+        <p>Every chip on earth is designed with EDA software dominated by three foreign companies — Synopsys, Cadence and Siemens EDA — holding over 85% of a ~$16B market. Commercial analog flows (Cadence Virtuoso + Spectre class) cost hundreds of thousands of dollars per seat per year, which prices out most Indian startups, MSMEs and college labs.</p>
+        <p>India now designs thousands of chips a year (about 20% of the world's chip designers work here), has 100+ fabless startups using the government's shared EDA grid, and its first commercial fab (Tata–PSMC, Dholera) and OSAT plants (CG Semi, Kaynes, Micron ATMP) are coming online. The need for <b>cheap, quality, locally-supported design software</b> has never been clearer.</p>
+        <p>SPICE Studio is a demonstration of the lowest-hanging fruit in that gap: a zero-install, zero-cost SPICE-class simulator that any engineer or student can open in a browser — for circuit homework, quick what-if checks, analog IP bring-up planning, and interview/hiring skill tests — before touching an expensive licensed tool.</p>
+        <h3>Roadmap (the "low-hanging fruits" this prototype seeds)</h3>
+        <table>
+          <tr><td>1</td><td>BSIM4/BSIM-CMG device models + foundry PDK model cards (the real accuracy gap vs. HSPICE/Spectre)</td></tr>
+          <tr><td>2</td><td>AC / noise / S-parameter analyses, .measure statements, Monte Carlo & corners</td></tr>
+          <tr><td>3</td><td>Schematic capture + waveform viewer parity (Virtuoso-lite UX on the same engine)</td></tr>
+          <tr><td>4</td><td>Post-layout simulation with extracted netlists (SPEF/RC in)</td></tr>
+          <tr><td>5</td><td>Server-side parallel batch runs — the "farm" startups currently rent by the hour</td></tr>
+        </table>
+        <h3>Engineering notes</h3>
+        <p>The engine implements Modified Nodal Analysis with sparse-aware dense LU, Newton–Raphson with junction limiting and gmin stepping, trapezoidal companion models, breakpoint-aware adaptive time stepping, and hierarchical subcircuit expansion. It is ~700 lines of dependency-free JavaScript — auditable, hackable, embeddable. Verified against analytic solutions for RC/RLC/diode/MOS testbenches.</p>
+        <p style="margin-top:10px;color:var(--muted)">This prototype is for education and design exploration. Sign-off simulation should use golden licensed tools with foundry-certified models.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div id="plotwrap">
+      <canvas id="plot"></canvas>
+      <div id="optable" style="display:none"></div>
+    </div>
+    <div id="resultsbar"></div>
+    <div id="traces"></div>
+  </div>
+</main>
+
+<script>
+/* =====================================================================
+   SPICE Studio — core circuit simulation engine
+   A self-contained SPICE-3-like simulator core (op / dc sweep / transient)
+   supporting R, C, L, V (DC/SIN/PULSE), I, D, MOSFET Level-1, subcircuits.
+   Written as a plain JS object so it runs in the browser and in Node.
+   ===================================================================== */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) module.exports = factory();
+  else root.SpiceCore = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  /* ---------------- number parsing with SPICE suffixes ---------------- */
+  function parseNum(s) {
+    if (s == null) return NaN;
+    s = String(s).trim().toLowerCase();
+    const m = s.match(/^([-+]?[0-9.]+(?:e[-+]?[0-9]+)?)\s*(t|g|meg|k|m|mil|u|n|p|f)?$/);
+    if (!m) return NaN;
+    let v = parseFloat(m[1]);
+    const suf = m[2];
+    if (suf === 't') v *= 1e12;
+    else if (suf === 'g') v *= 1e9;
+    else if (suf === 'meg') v *= 1e6;
+    else if (suf === 'k') v *= 1e3;
+    else if (suf === 'm') v *= 1e-3;
+    else if (suf === 'mil') v *= 25.4e-6;
+    else if (suf === 'u') v *= 1e-6;
+    else if (suf === 'n') v *= 1e-9;
+    else if (suf === 'p') v *= 1e-12;
+    else if (suf === 'f') v *= 1e-15;
+    return v;
+  }
+
+  /* ---------------- netlist parsing ---------------- */
+  function preprocess(text) {
+    const raw = text.split(/\r?\n/);
+    const out = [];
+    for (let line of raw) {
+      // strip inline comments
+      line = line.replace(/;.*$/, '').replace(/\$.*$/, '');
+      if (line.trim().startsWith('*')) continue; // comment line
+      if (line.trim() === '') continue;
+      if (line.startsWith('+')) {
+        if (out.length) out[out.length - 1] += ' ' + line.slice(1).trim();
+      } else {
+        out.push(line.trim());
+      }
+    }
+    return out.filter(l => l.length);
+  }
+
+  function tokenize(line) {
+    // split on whitespace, but keep '=' joined tokens as key=value
+    return line.split(/\s+/).filter(Boolean);
+  }
+
+  function splitKV(tokens) {
+    // returns {positional: [...], kv: {}}  — tokens like L=0.5u
+    const pos = [], kv = {};
+    for (const t of tokens) {
+      const eq = t.indexOf('=');
+      if (eq > 0 && /^[a-zA-Z]/.test(t[0]) === false ? false : /[-+0-9.]/.test(t[0])) { pos.push(t); continue; }
+      if (eq > 0 && !/^[-+0-9.]/.test(t[0])) {
+        kv[t.slice(0, eq).toLowerCase()] = parseNum(t.slice(eq + 1));
+      } else pos.push(t);
+    }
+    return { pos, kv };
+  }
+
+  function parseNetlist(text) {
+    const lines = preprocess(text);
+    const net = { elems: [], models: {}, analyses: [], ic: {}, subckts: {}, hasGround: false };
+    let curSub = null;
+
+    for (const line of lines) {
+      const toks = tokenize(line);
+      const first = toks[0];
+      const c0 = first[0].toUpperCase();
+      const name = first.toUpperCase();
+
+      // ---- dot cards ----
+      if (c0 === '.') {
+        const card = first.toUpperCase();
+        if (card === '.MODEL') {
+          const mname = toks[1].toUpperCase(), mtype = toks[2].toUpperCase();
+          const { kv } = splitKV(toks.slice(3));
+          net.models[mname] = { type: mtype, params: kv };
+        } else if (card === '.OP' || card === '.DC' || card === '.TRAN') {
+          net.analyses.push({ type: card, args: toks.slice(1).map(parseNum), raw: toks.slice(1) });
+        } else if (card === '.IC') {
+          for (const t of toks.slice(1)) {
+            const m = t.toUpperCase().match(/^V\(([^)]+)\)\s*=\s*(.+)$/);
+            if (m) net.ic[m[1].toUpperCase()] = parseNum(m[2]);
+          }
+        } else if (card === '.SUBCKT') {
+          curSub = { name: toks[1].toUpperCase(), nodes: toks.slice(2).map(s => s.toUpperCase()), elems: [] };
+          net.subckts[curSub.name] = curSub;
+        } else if (card === '.ENDS') {
+          curSub = null;
+        } else if (card === '.END' || card === '.INCLUDE' || card === '.LIB' || card === '.PARAM') {
+          // accepted, ignored or handled elsewhere
+        }
+        continue;
+      }
+
+      const target = curSub ? curSub.elems : net.elems;
+      const { pos, kv } = splitKV(toks.slice(1));
+
+      if (c0 === 'R' || c0 === 'C' || c0 === 'L') {
+        target.push({ type: c0, name, n: [pos[0].toUpperCase(), pos[1].toUpperCase()], value: parseNum(pos[2]) });
+        for (const k of ['n', 'n1', 'n2']) if (kv[k] !== undefined) target[target.length - 1].value = kv[k];
+      } else if (c0 === 'V' || c0 === 'I') {
+        const e = { type: c0, name, n: [pos[0].toUpperCase(), pos[1].toUpperCase()], dc: 0, wave: null, waveType: null };
+        // Vname n+ n- [DC] val [PULSE(...)|SIN(...)]
+        let i = 2; // skip n+ n-
+        const hasWave = /\b(PULSE|SIN)\s*\(/i.test(line);
+        if (pos[i] && pos[i].toUpperCase() === 'DC') { e.dc = parseNum(pos[i + 1] || '0'); }
+        else if (pos[i] !== undefined && !/^(pulse|sin)/i.test(pos[i])) { e.dc = parseNum(pos[i]); }
+        else if (!hasWave && pos[i] === undefined) { e.dc = 0; }
+        if (hasWave) {
+          const wm = /PULSE\s*\(([^)]*)\)/i.exec(line) || /SIN\s*\(([^)]*)\)/i.exec(line);
+          e.waveType = /^\s*PULSE/i.test(wm[0]) ? 'PULSE' : 'SIN';
+          e.wave = wm[1].split(/[\s,]+/).filter(Boolean).map(parseNum);
+        }
+        target.push(e);
+      } else if (c0 === 'D') {
+        target.push({ type: 'D', name, n: [pos[0].toUpperCase(), pos[1].toUpperCase()], model: (pos[2] || 'D').toUpperCase() });
+      } else if (c0 === 'M') {
+        // M d g s b model [L=.. W=..]
+        target.push({
+          type: 'M', name, n: pos.slice(0, 4).map(s => s.toUpperCase()),
+          model: (pos[4] || '').toUpperCase(), kv
+        });
+      } else if (c0 === 'X') {
+        // Xname n1 n2.. subname
+        target.push({ type: 'X', name, n: pos.slice(0, -1).map(s => s.toUpperCase()), sub: pos[pos.length - 1].toUpperCase() });
+      } else if (c0 === 'Q' || c0 === 'B') {
+        throw new Error('Element "' + name + '": BJT / behavioral sources are not supported yet in SPICE Studio.');
+      } else {
+        throw new Error('Unrecognized element: "' + first + '"');
+      }
+    }
+
+    // expand subcircuits (one level of recursion guard)
+    function expand(elems, depth) {
+      if (depth > 8) throw new Error('Subcircuit nesting too deep');
+      const out = [];
+      for (const e of elems) {
+        if (e.type !== 'X') { out.push(e); continue; }
+        const sub = net.subckts[e.sub];
+        if (!sub) throw new Error('Unknown subcircuit: ' + e.sub);
+        if (sub.nodes.length !== e.n.length) throw new Error('Node count mismatch for ' + e.name + ' / ' + e.sub);
+        const map = {};
+        sub.nodes.forEach((nn, i) => map[nn] = e.n[i]);
+        for (const se of sub.elems) {
+          const clone = JSON.parse(JSON.stringify(se));
+          clone.name = e.name + '.' + clone.name;
+          clone.n = clone.n.map(nn => (nn === '0') ? '0' : (map[nn] !== undefined ? map[nn] : (e.name + '.' + nn)));
+          if (clone.type === 'M') clone.model = clone.model; // model names global
+          out.push(clone);
+        }
+      }
+      return out;
+    }
+    net.elems = expand(net.elems, 0);
+
+    const allNodes = new Set(['0']);
+    for (const e of net.elems) for (const n of (e.n || [])) allNodes.add(n);
+    net.nodeList = [...allNodes];
+    net.hasGround = net.elems.length > 0;
+    return net;
+  }
+
+  /* ---------------- model evaluation ---------------- */
+  const VT = 0.025852; // kT/q at 300K
+
+  function getDiodeModel(net, mname) {
+    const m = net.models[mname];
+    if (!m || m.type !== 'D') throw new Error('Missing diode model: ' + mname);
+    const p = m.params;
+    return { is: p.is !== undefined ? p.is : 1e-14, n: p.n !== undefined ? p.n : 1 };
+  }
+
+  function getMosModel(net, mname) {
+    const m = net.models[mname];
+    if (!m || (m.type !== 'NMOS' && m.type !== 'PMOS')) throw new Error('Missing MOS model: ' + mname);
+    const p = m.params;
+    return {
+      pmos: m.type === 'PMOS',
+      vto: p.vto !== undefined ? p.vto : (m.type === 'PMOS' ? -0.7 : 0.7),
+      kp: p.kp !== undefined ? p.kp : 120e-6,
+      lambda: p.lambda !== undefined ? p.lambda : 0.02,
+      gamma: p.gamma !== undefined ? p.gamma : 0.0,
+      phi: p.phi !== undefined ? p.phi : 0.6
+    };
+  }
+
+  // diode current & conductance; vd real (anode-cathode)
+  function diodeEval(vd, dm) {
+    const vte = dm.n * VT;
+    if (vd >= -5 * vte) {
+      const e = Math.exp(Math.min(vd / vte, 50));
+      const i = dm.is * (e - 1);
+      const g = dm.is * e / vte;
+      return { i, g };
+    }
+    const e = Math.exp(vd / vte); // tiny
+    return { i: -dm.is, g: dm.is * e / vte };
+  }
+
+  // pn-junction voltage limiting (from SPICE pnjlim)
+  function pnjlim(vnew, vold, vt, vcrit) {
+    if (vnew > vcrit && Math.abs(vnew - vold) > 2 * vt) {
+      if (vold > 0) {
+        const arg = 1 + (vnew - vold) / vt;
+        vnew = arg > 0 ? vold + vt * Math.log(arg) : vcrit;
+      } else vnew = vt * Math.log(vnew / vt);
+      return vnew;
+    }
+    if (!(vnew > vcrit)) return vnew;
+    return vnew < vold ? Math.max(vnew, vcrit - 2 * vt) : vnew;
+  }
+
+  // Level-1 MOSFET evaluation with drain-source swap for reverse operation.
+  // Returns {id (D->S in real orientation), gm, gds, gmbs} = current and its
+  // partial derivatives w.r.t. REAL node voltages vg, vd, vb (vs implicit).
+  function mosEval(vd, vg, vs, vb, mm, L, W) {
+    const e = mm.pmos ? -1 : 1;
+    const VD = e * (vd - vs), VG = e * (vg - vs), VB = e * (vb - vs);
+    const vth0 = e * mm.vto;
+    let vth = vth0;
+    if (mm.gamma > 0) {
+      const sarg = VB <= 0 ? Math.sqrt(mm.phi - VB) : Math.sqrt(mm.phi);
+      vth = vth0 + mm.gamma * (sarg - Math.sqrt(mm.phi));
+    }
+    const beta = mm.kp * (W / L);
+    const swap = VD < 0;
+    // voltages in the (possibly swapped) frame
+    const vgs = swap ? VG - VD : VG;
+    const vds = swap ? -VD : VD;
+    const vbs = swap ? VB - VD : VB;
+    let vthS = vth;
+    if (swap && mm.gamma > 0) {
+      const sarg = vbs <= 0 ? Math.sqrt(mm.phi - vbs) : Math.sqrt(mm.phi);
+      vthS = vth0 + mm.gamma * (sarg - Math.sqrt(mm.phi));
+    }
+    const vov = vgs - vthS;
+    let ieff = 0, gm = 0, gds = 0, gmbs = 0;
+    if (vov > 0) {
+      if (vds < vov) {
+        // triode
+        ieff = beta * (vov * vds - vds * vds / 2) * (1 + mm.lambda * vds);
+        gm = beta * vds * (1 + mm.lambda * vds);
+        gds = beta * (vov - vds) * (1 + mm.lambda * vds) + mm.lambda * beta * vds * (vov - vds / 2);
+      } else {
+        // saturation
+        ieff = beta / 2 * vov * vov * (1 + mm.lambda * vds);
+        gm = beta * vov * (1 + mm.lambda * vds);
+        gds = mm.lambda * beta / 2 * vov * vov;
+      }
+      if (mm.gamma > 0 && vbs <= 0) {
+        const sarg = Math.sqrt(mm.phi - vbs);
+        gmbs = (vds < vov)
+          ? beta * vds * mm.gamma / (2 * sarg) * (1 + mm.lambda * vds)
+          : beta * vov * mm.gamma / (2 * sarg) * (1 + mm.lambda * vds);
+      }
+    }
+    if (!swap) {
+      // real current D->S = e*ieff ; derivatives map through e^2 = 1
+      return { id: e * ieff, gm, gds, gmbs };
+    }
+    // swapped: I_real(D->S) = -e*ieff ; derivative mapping:
+    // dI/dvg = -gm, dI/dvd = gm+gds+gmbs, dI/dvb = -gmbs  (each already includes e^2)
+    return { id: -e * ieff, gm: -gm, gds: gm + gds + gmbs, gmbs: -gmbs };
+  }
+
+  /* ---------------- linear solver: LU with partial pivoting ---------------- */
+  function lusolve(A, b) {
+    const n = b.length;
+    for (let i = 0; i < n; i++) A[i][n] = b[i]; // augmented
+    for (let k = 0; k < n; k++) {
+      let p = k, mx = Math.abs(A[k][k]);
+      for (let i = k + 1; i < n; i++) { const v = Math.abs(A[i][k]); if (v > mx) { mx = v; p = i; } }
+      if (mx < 1e-300) throw new Error('Singular matrix — floating node or short?');
+      if (p !== k) { const t = A[p]; A[p] = A[k]; A[k] = t; }
+      const piv = A[k][k];
+      for (let i = k + 1; i < n; i++) {
+        const f = A[i][k] / piv;
+        if (f === 0) continue;
+        A[i][k] = 0;
+        for (let j = k + 1; j <= n; j++) A[i][j] -= f * A[k][j];
+      }
+    }
+    const x = new Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+      let s = A[i][n];
+      for (let j = i + 1; j < n; j++) s -= A[i][j] * x[j];
+      x[i] = s / A[i][i];
+    }
+    return x;
+  }
+
+  /* ---------------- circuit assembly & analyses ---------------- */
+  class Circuit {
+    constructor(net) {
+      this.net = net;
+      this.nodeIdx = {}; // name -> index (0 reserved for gnd)
+      let i = 1;
+      for (const n of net.nodeList) if (n !== '0') this.nodeIdx[n] = i++;
+      this.N = i; // number of node unknowns incl gnd slot
+      // branch unknowns for V sources and L
+      this.branch = []; // {elem, kind}
+      for (const e of net.elems) {
+        if (e.type === 'V' || e.type === 'L') { e.branchIdx = this.branch.length; this.branch.push({ e, kind: e.type }); }
+      }
+      this.dim = (this.N - 1) + this.branch.length;
+      this.diodeModels = {};
+      this.mosModels = {};
+      this.icNodes = null; // {NODE: V} forcing during initial-condition solve
+      for (const e of net.elems) {
+        if (e.type === 'D' && !this.diodeModels[e.model]) this.diodeModels[e.model] = getDiodeModel(net, e.model);
+        if (e.type === 'M' && !this.mosModels[e.model]) this.mosModels[e.model] = getMosModel(net, e.model);
+      }
+    }
+    idx(n) { return n === '0' ? 0 : this.nodeIdx[n]; }
+
+    // evaluate source value at time t
+    srcVal(e, t) {
+      if (!e.waveType || t === undefined) return e.dc;
+      const w = e.wave;
+      if (e.waveType === 'SIN') {
+        const [vo, va, fq, td = 0, th = 0] = w;
+        let v = vo + (th ? va * Math.exp(-th * (t - td)) : va) * Math.sin(2 * Math.PI * fq * (t - td));
+        if (t < td) v = vo;
+        return v;
+      }
+      if (e.waveType === 'PULSE') {
+        const [v1, v2, td = 0, tr = 0, tf = 0, pw = 1e30, per = 1e30] = w;
+        if (t < td) return v1;
+        let tt = (t - td) % per;
+        if (tt < tr) return v1 + (v2 - v1) * tt / tr;
+        if (tt < tr + pw) return v2;
+        if (tt < tr + pw + tf) return v2 + (v1 - v2) * (tt - tr - pw) / tf;
+        return v1;
+      }
+      return e.dc;
+    }
+
+    // ---- build & solve one Newton iteration ----
+    // x: current guess (node voltages + branch currents); t: undefined for DC
+    // dt & state: transient companions
+    solveNR(x, t, dt, state, gmin) {
+      const n = this.dim;
+      const A = Array.from({ length: n }, () => new Array(n + 1).fill(0));
+      const S = state || { vprev: {}, iprev: {}, dprev: {}, mprev: {} }; // {vprev:{node}, iprev:{elemIndex}}
+
+      const addTo = (r, c, v) => { if (r !== 0 && c !== 0) A[r - 1][c - 1] += v; };
+      const addRHS = (r, v) => { if (r !== 0) A[r - 1][n] += v; };
+
+      for (let ei = 0; ei < this.net.elems.length; ei++) {
+        const e = this.net.elems[ei];
+        const [na, nb] = [this.idx(e.n[0]), this.idx(e.n[1])];
+
+        if (e.type === 'R') {
+          const g = 1 / e.value;
+          addTo(na, na, g); addTo(nb, nb, g); addTo(na, nb, -g); addTo(nb, na, -g);
+        } else if (e.type === 'C') {
+          if (dt === undefined) continue; // open in DC
+          const geq = 2 * e.value / dt;
+          const vp = S.vprev[e.n[0]] - S.vprev[e.n[1]];
+          const ip = S.iprev[ei] || 0;
+          const ieq = -(geq * vp + ip); // i = geq*v + ieq (trapezoidal)
+          addTo(na, na, geq); addTo(nb, nb, geq); addTo(na, nb, -geq); addTo(nb, na, -geq);
+          addRHS(na, -ieq); addRHS(nb, ieq);
+        } else if (e.type === 'L') {
+          const bi = this.N + e.branchIdx;
+          if (dt === undefined) { // short in DC: v+ - v- = 0
+            addTo(bi, na, 1); addTo(bi, nb, -1); addRHS(bi, 0);
+            addTo(na, bi, 1); addTo(nb, bi, -1);
+          } else {
+            const geq = dt / (2 * e.value);
+            const vp = S.vprev[e.n[0]] - S.vprev[e.n[1]];
+            const ip = S.iprev[ei] || 0;
+            const ieq = ip + geq * vp; // i = geq*v + ieq
+            addTo(na, na, geq); addTo(nb, nb, geq); addTo(na, nb, -geq); addTo(nb, na, -geq);
+            addRHS(na, -ieq); addRHS(nb, ieq);
+            // branch equation i = geq*v + ieq  →  -geq*(vna-vnb) + i = ieq
+            addTo(bi, na, -geq); addTo(bi, nb, geq); addTo(bi, bi, 1); addRHS(bi, ieq);
+            addTo(na, bi, 1); addTo(nb, bi, -1);
+          }
+        } else if (e.type === 'V') {
+          const bi = this.N + e.branchIdx;
+          const E = this.srcVal(e, t);
+          addTo(bi, na, 1); addTo(bi, nb, -1); addRHS(bi, E);
+          addTo(na, bi, 1); addTo(nb, bi, -1);
+        } else if (e.type === 'I') {
+          const I = this.srcVal(e, t);
+          addRHS(na, -I); addRHS(nb, I);
+        } else if (e.type === 'D') {
+          const dm = this.diodeModels[e.model];
+          const vd = (na !== 0 ? x[na - 1] : 0) - (nb !== 0 ? x[nb - 1] : 0);
+          const vcrit = dm.n * VT * Math.log(dm.n * VT / (Math.sqrt(2) * dm.is));
+          const vdl = pnjlim(vd, (S.dprev && S.dprev[ei] !== undefined) ? S.dprev[ei] : vd, VT, vcrit);
+          const r = diodeEval(vdl, dm);
+          const i0 = r.i - r.g * vdl; // linearize around limited point
+          addTo(na, na, r.g); addTo(nb, nb, r.g); addTo(na, nb, -r.g); addTo(nb, na, -r.g);
+          addRHS(na, -i0); addRHS(nb, i0);
+          if (S.dprev) S.dprev[ei] = vdl;
+        } else if (e.type === 'M') {
+          const mm = this.mosModels[e.model];
+          const L = e.kv.l !== undefined ? e.kv.l : 2e-6;
+          const W = e.kv.w !== undefined ? e.kv.w : 2e-6;
+          const nd = this.idx(e.n[0]), ng = this.idx(e.n[1]), ns = this.idx(e.n[2]), nbb = this.idx(e.n[3]);
+          const vd = nd ? x[nd - 1] : 0, vg = ng ? x[ng - 1] : 0, vs = ns ? x[ns - 1] : 0, vb = nbb ? x[nbb - 1] : 0;
+          // limit vgs (in effective domain) for convergence
+          const mosE = mm.pmos ? -1 : 1;
+          let vgsE = mosE * (vg - vs);
+          const vgsOld = (S.mprev && S.mprev[ei] !== undefined) ? S.mprev[ei] : vgsE;
+          if (Math.abs(vgsE - vgsOld) > 1) vgsE = vgsOld + Math.sign(vgsE - vgsOld);
+          if (S.mprev) S.mprev[ei] = vgsE;
+          const vgL = vs + mosE * vgsE; // consistent limited gate voltage
+          const r = mosEval(vd, vgL, vs, vb, mm, L, W);
+          // i ≈ id + gm*(vg-vg0) + gds*(vd-vd0) + gmbs*(vb-vb0) - (gm+gds+gmbs)*(vs-vs0)
+          const i0 = r.id - (r.gm * vgL + r.gds * vd + r.gmbs * vb - (r.gm + r.gds + r.gmbs) * vs);
+          addTo(nd, ng, r.gm); addTo(ns, ng, -r.gm);
+          addTo(nd, nd, r.gds); addTo(ns, nd, -r.gds);
+          addTo(nd, nbb, r.gmbs); addTo(ns, nbb, -r.gmbs);
+          addTo(nd, ns, -(r.gm + r.gds + r.gmbs)); addTo(ns, ns, (r.gm + r.gds + r.gmbs));
+          addRHS(nd, -i0); addRHS(ns, i0);
+        }
+      }
+      // gmin from every node to ground
+      for (let i = 1; i < this.N; i++) addTo(i, i, gmin);
+      // initial-condition forcing (big conductance to a voltage)
+      if (this.icNodes) {
+        const GIC = 1e9;
+        for (const [nn, vv] of Object.entries(this.icNodes)) {
+          const i = this.idx(nn);
+          if (i) { addTo(i, i, GIC); addRHS(i, GIC * vv); }
+        }
+      }
+      return lusolve(A, A.map(r => r[n]));
+    }
+
+    // ---- operating point (Newton loop) ----
+    op(x0, t, dt, state, maxIter) {
+      let x = x0 ? x0.slice() : new Array(this.dim).fill(0);
+      maxIter = maxIter || 100;
+      let it = 0;
+      for (; it < maxIter; it++) {
+        const xn = this.solveNR(x, t, dt, state, 1e-12);
+        let dmax = 0;
+        for (let i = 0; i < this.dim; i++) {
+          const d = Math.abs(xn[i] - x[i]);
+          const scale = Math.max(Math.abs(x[i]), Math.abs(xn[i]), 1);
+          if (d / scale > dmax) dmax = d / scale;
+        }
+        x = xn;
+        if (dmax < 1e-9) return { x, iters: it + 1, converged: true };
+      }
+      // gmin stepping fallback
+      let gmin = 1e-6, best = null;
+      for (; gmin > 1e-11; gmin /= 10) {
+        let y = x.slice();
+        for (it = 0; it < maxIter; it++) {
+          const yn = this.solveNR(y, t, dt, state, gmin);
+          y = yn;
+        }
+        best = y;
+        // one final pass with true gmin
+        let ok = true;
+        for (it = 0; it < maxIter; it++) {
+          const yn = this.solveNR(y, t, dt, state, 1e-12);
+          let dmax = 0;
+          for (let i = 0; i < this.dim; i++) dmax = Math.max(dmax, Math.abs(yn[i] - y[i]));
+          y = yn;
+          if (dmax < 1e-9) break;
+        }
+        if (it < maxIter) return { x: y, iters: it, converged: true };
+      }
+      return { x: best, iters: maxIter, converged: false };
+    }
+
+    nodeVoltages(x) {
+      const out = { '0': 0 };
+      for (const [n, i] of Object.entries(this.nodeIdx)) out[n] = x[i - 1];
+      return out;
+    }
+
+    currentsThroughSources(x) {
+      const out = {};
+      for (const b of this.branch) out[b.e.name] = x[this.N + b.e.branchIdx - 1];
+      return out;
+    }
+  }
+
+  /* ---------------- top-level run function ---------------- */
+  function run(netlistText, opts) {
+    opts = opts || {};
+    const net = parseNetlist(netlistText);
+    const results = [];
+    const analyses = net.analyses.length ? net.analyses : [{ type: '.OP', args: [] }];
+
+    for (const an of analyses) {
+      const ckt = new Circuit(net);
+
+      if (an.type === '.OP') {
+        const r = ckt.op(null);
+        results.push({
+          type: 'op',
+          converged: r.converged,
+          nodes: ckt.nodeVoltages(r.x),
+          sources: ckt.currentsThroughSources(r.x)
+        });
+      } else if (an.type === '.DC') {
+        const [srcName, start, stop, step] = an.raw.length === 4 ? [an.raw[0], an.args[1], an.args[2], an.args[3]] : [an.raw[0], an.args[1], an.args[2], an.args[3]];
+        const src = net.elems.find(e => e.type === 'V' && e.name === srcName.toUpperCase());
+        if (!src) throw new Error('.DC: source ' + srcName + ' not found');
+        const pts = [];
+        const npts = Math.floor(Math.abs((stop - start) / step)) + 1;
+        let x = null;
+        const sweep = [];
+        for (let i = 0; i <= npts && i < 10001; i++) {
+          src.dc = start + (stop > start ? 1 : -1) * Math.abs(step) * i;
+          const r = ckt.op(x);
+          if (!r.converged) throw new Error('.DC failed to converge at sweep point ' + i);
+          x = r.x;
+          sweep.push({ sweep: src.dc, nodes: ckt.nodeVoltages(r.x), sources: ckt.currentsThroughSources(r.x) });
+        }
+        results.push({ type: 'dc', source: src.name, data: sweep });
+      } else if (an.type === '.TRAN') {
+        const [tstep, tstop, tstart = 0] = an.args;
+        const tmax = opts.maxPoints || 200000;
+        let dt = Math.max(tstep, tstop / tmax);
+        // collect waveform breakpoints so no step straddles a pulse edge
+        const bps = [];
+        for (const e of net.elems) {
+          if (e.waveType === 'PULSE' && e.wave && e.wave.length >= 2) {
+            const [v1, v2, td = 0, tr = 0, tf = 0, pw = 1e30, per = 1e30] = e.wave;
+            void v1; void v2;
+            const offs = [td, td + tr, td + tr + pw, td + tr + pw + tf];
+            if (per >= 1e29) { for (const b of offs) if (b > 0 && b < tstop) bps.push(b); }
+            else {
+              for (let k = 0; ; k++) {
+                const t0 = k * per;
+                if (t0 > tstop) break;
+                for (const off of offs) { const b = t0 + off; if (b > 0 && b < tstop) bps.push(b); }
+              }
+            }
+          }
+        }
+        bps.sort((a, b) => a - b);
+        let bpIdx = 0;
+        const state = { vprev: {}, iprev: {}, dprev: {}, mprev: {} };
+        // initial conditions
+        for (const [n, v] of Object.entries(net.ic)) state.vprev[n] = v;
+        const cktNodes = new Set(net.nodeList);
+        for (const n of Object.keys(state.vprev)) if (!cktNodes.has(n.toUpperCase())) throw new Error('.IC references unknown node ' + n);
+
+        const hasIC = Object.keys(net.ic).length > 0;
+        ckt.icNodes = hasIC ? net.ic : null;
+        const r0 = ckt.op(null, 0, undefined, { vprev: {}, iprev: {}, dprev: {}, mprev: {} });
+        let x = r0.x;
+        ckt.icNodes = null;
+        // record initial companion state from DC solution
+        const nv0 = ckt.nodeVoltages(x);
+        for (const n of net.nodeList) if (state.vprev[n] === undefined) state.vprev[n] = nv0[n] !== undefined ? nv0[n] : 0;
+
+        const trace = { time: [], nodes: {} };
+        for (const n of net.nodeList) if (n !== '0') trace.nodes[n] = [];
+        let t = 0, points = 0, retries = 0;
+        while (t <= tstop + 1e-12 && points < tmax) {
+          // clamp step so it does not cross a waveform breakpoint
+          while (bpIdx < bps.length && bps[bpIdx] <= t * (1 + 1e-12) + 1e-18) bpIdx++;
+          if (bpIdx < bps.length && t + dt > bps[bpIdx]) {
+            dt = Math.max(bps[bpIdx] - t, 1e-18);
+          }
+          const nv = ckt.nodeVoltages(x);
+          trace.time.push(t);
+          for (const n in trace.nodes) trace.nodes[n].push(nv[n]);
+          points++;
+          // advance
+          let ok = false, xx = null, s2 = null;
+          while (!ok) {
+            const st2 = { vprev: Object.assign({}, state.vprev), iprev: Object.assign({}, state.iprev), dprev: {}, mprev: {} };
+            try {
+              const r = ckt.op(x, t + dt, dt, st2);
+              ok = r.converged;
+              xx = r.x;
+              s2 = st2;
+            } catch (err) { ok = false; xx = null; }
+            if (!ok) {
+              dt /= 2; retries++;
+              if (retries > 60 || dt < 1e-18) throw new Error('Transient failed to converge at t=' + t.toExponential(3));
+            }
+          }
+          // update currents through reactive elements for next step (trapezoidal bookkeeping)
+          const newV = ckt.nodeVoltages(xx);
+          for (let ei = 0; ei < net.elems.length; ei++) {
+            const e = net.elems[ei];
+            if (e.type === 'C') {
+              const geq = 2 * e.value / dt;
+              const vp = state.vprev[e.n[0]] - state.vprev[e.n[1]];
+              const ip = state.iprev[ei] || 0;
+              s2.iprev[ei] = geq * ((newV[e.n[0]] - newV[e.n[1]]) - vp) - ip;
+            } else if (e.type === 'L') {
+              const geq = dt / (2 * e.value);
+              const vp = state.vprev[e.n[0]] - state.vprev[e.n[1]];
+              const ip = state.iprev[ei] || 0;
+              const bi = ckt.N + e.branchIdx;
+              s2.iprev[ei] = xx[bi - 1];
+              void geq; void ip; void vp;
+            }
+          }
+          s2.vprev = newV;
+          state.vprev = s2.vprev; state.iprev = s2.iprev;
+          x = xx;
+          const onBp = bpIdx < bps.length && Math.abs(t + dt - bps[bpIdx]) <= 1e-9 * Math.max(1e-18, dt);
+          t += dt;
+          if (onBp) { bpIdx++; dt = Math.max(dt * 1e-3, tstop / tmax / 1000, 1e-18); }
+          else if (retries > 0 || dt < tstep) dt = Math.min(dt * 1.4, tstep, (tstop - t) || dt);
+          retries = 0;
+        }
+        results.push({ type: 'tran', tstep, tstop, trace });
+      }
+    }
+    return { net, results };
+  }
+
+  return { parseNetlist, run, Circuit, parseNum };
+});
+
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const netlistEl = $('#netlist'), statusEl = $('#status'), plotEl = $('#plot');
+  const tracesEl = $('#traces'), resbarEl = $('#resultsbar'), opEl = $('#optable');
+
+  /* ---------- example netlists ---------- */
+  const EXAMPLES = {
+    'Voltage divider (OP)': `* Voltage divider
+V1 in 0 DC 5
+R1 in out 1k
+R2 out 0 1k
+.op
+`,
+    'RC low-pass (transient)': `* RC low-pass: square wave in, exponential edges out
+Vin in 0 PULSE(0 5 0 1n 1n 2m 4m)
+R1 in out 1k
+C1 out 0 1u
+.tran 0.05m 12m
+`,
+    'Diode I-V (DC sweep)': `* Diode characteristic curve
+V1 a 0 DC 0
+D1 a 0 dmod
+.model dmod d is=1e-14 n=1
+.dc V1 0 0.8 0.005
+`,
+    'CMOS inverter VTC': `* CMOS inverter: DC transfer characteristic
+VDD vdd 0 DC 1.8
+VIN in 0 DC 0
+MP out in vdd vdd pmos L=0.18u W=2u
+MN out in 0 0 nmos L=0.18u W=1u
+.model nmos nmos level=1 vto=0.5 kp=120u lambda=0.05
+.model pmos pmos level=1 vto=-0.5 kp=60u lambda=0.05
+.dc VIN 0 1.8 0.02
+`,
+    'CMOS inverter switching': `* CMOS inverter: transient switching waveforms
+VDD vdd 0 DC 1.8
+VIN in 0 PULSE(0 1.8 0 50p 50p 1n 2n)
+MP out in vdd vdd pmos L=0.18u W=2u
+MN out in 0 0 nmos L=0.18u W=1u
+CL out 0 20f
+.model nmos nmos level=1 vto=0.5 kp=120u lambda=0.05
+.model pmos pmos level=1 vto=-0.5 kp=60u lambda=0.05
+.tran 10p 6n
+`,
+    'Ring oscillator (5-stage)': `* 5-stage CMOS ring oscillator
+VDD vdd 0 DC 1.8
+X1 a b inv
+X2 b c inv
+X3 c d inv
+X4 d e inv
+X5 e a inv
+Ca a 0 50f
+Cb b 0 50f
+Cc c 0 50f
+Cd d 0 50f
+Ce e 0 50f
+.subckt inv out in
+MP out in vdd2 vdd2 pmos L=0.18u W=4u
+MN out in 0 0 nmos L=0.18u W=2u
+vdd2 vdd2 0 DC 1.8
+.ends
+.model nmos nmos level=1 vto=0.5 kp=120u lambda=0.05
+.model pmos pmos level=1 vto=-0.5 kp=60u lambda=0.05
+.ic v(a)=0
+.tran 5p 6n
+`,
+    'Common-source amplifier': `* Common-source amplifier, AC-coupled input, mid-rail bias
+VDD vdd 0 DC 3.3
+VIN in 0 SIN(0 0.02 1k 0 0)
+Cin in gate 10u
+R1 gate vdd 100k
+R2 gate 0 68k
+M1 out gate 0 0 nmos L=0.5u W=10u
+RL out vdd 3.3k
+CL out 0 10p
+.model nmos nmos level=1 vto=0.7 kp=120u lambda=0.05 gamma=0.4
+.tran 20u 5m
+`,
+    'LC tank ringing': `* LC tank: pulse kicks a resonant ring
+V1 in 0 PULSE(0 1 0 1n 1n 1u 2u)
+L1 in mid 1u
+C1 mid 0 1u
+R1 mid 0 1meg
+.tran 50n 20u
+`
+  };
+
+  const exSel = $('#examples');
+  for (const k of Object.keys(EXAMPLES)) {
+    const o = document.createElement('option'); o.textContent = k; exSel.appendChild(o);
+  }
+  exSel.addEventListener('change', () => {
+    if (exSel.value && EXAMPLES[exSel.value]) {
+      netlistEl.value = EXAMPLES[exSel.value];
+      runSim();
+    }
+    exSel.value = '';
+  });
+
+  netlistEl.value = EXAMPLES['CMOS inverter VTC'];
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $('#pane-' + b.id.replace('tab-', '')).classList.add('active');
+  }));
+
+  /* ---------- simulation state ---------- */
+  let lastResult = null, viewIdx = 0, traceState = {};
+
+  function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ''; }
+
+  function runSim() {
+    setStatus('Running…');
+    opEl.style.display = 'none';
+    const t0 = performance.now();
+    try {
+      lastResult = SpiceCore.run(netlistEl.value);
+      viewIdx = 0;
+      traceState = {};
+      const dt = performance.now() - t0;
+      const res = lastResult.results[0];
+      let info = lastResult.results.map((r, i) => (r.type === 'op' ? '.op' : r.type === 'dc' ? '.dc' : '.tran') + ' #' + (i + 1)).join(' · ');
+      if (res.converged === false) setStatus('Done (' + dt.toFixed(0) + ' ms) — WARNING: .op did not converge cleanly', 'err');
+      else setStatus('Done in ' + dt.toFixed(0) + ' ms — ' + info, 'ok');
+      renderResultPicker();
+      render();
+    } catch (err) {
+      setStatus(err.message, 'err');
+      lastResult = null;
+      ctxClear();
+    }
+  }
+  $('#run').addEventListener('click', runSim);
+
+  netlistEl.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSim(); }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = netlistEl.selectionStart;
+      netlistEl.setRangeText('    ', s, netlistEl.selectionEnd, 'end');
+    }
+  });
+
+  /* ---------- result picker ---------- */
+  function renderResultPicker() {
+    resbarEl.innerHTML = '';
+    if (!lastResult) return;
+    const res = lastResult.results[viewIdx];
+    let txt = '';
+    if (res.type === 'tran') {
+      txt = 'Transient: ' + res.trace.time.length.toLocaleString() + ' points, t = 0 → ' + eng(res.tstop) + 's';
+    } else if (res.type === 'dc') {
+      txt = 'DC sweep of ' + res.source + ': ' + res.data.length + ' points';
+    } else {
+      txt = 'Operating point';
+    }
+    if (lastResult.results.length > 1) {
+      lastResult.results.forEach((r, i) => {
+        const b = document.createElement('button');
+        b.className = 'btn resselect' + (i === viewIdx ? ' primary' : '');
+        b.textContent = (r.type === 'op' ? '.op' : r.type) + ' #' + (i + 1);
+        b.addEventListener('click', () => { viewIdx = i; renderResultPicker(); render(); });
+        resbarEl.appendChild(b);
+      });
+    }
+    const span = document.createElement('span');
+    span.textContent = txt;
+    span.style.alignSelf = 'center';
+    resbarEl.appendChild(span);
+  }
+
+  /* ---------- plotting ---------- */
+  const COLORS = ['#4ea1ff', '#ff9e42', '#3fb950', '#ff6b9d', '#b18cff', '#39d0d8', '#ffd866', '#ff5f5f'];
+
+  function ctxClear() {
+    const ctx = plotEl.getContext('2d');
+    ctx.clearRect(0, 0, plotEl.width, plotEl.height);
+    tracesEl.innerHTML = '';
+  }
+
+  function getXy(res) {
+    if (res.type === 'tran') return { x: res.trace.time, xs: 'Time (s)', nodes: res.trace.nodes };
+    if (res.type === 'dc') {
+      const nodes = { __sweep: res.data.map(p => p.sweep) };
+      const names = Object.keys(res.data[0].nodes);
+      for (const n of names) nodes[n] = res.data.map(p => p.nodes[n]);
+      return { x: nodes.__sweep, xs: res.source + ' sweep (V)', nodes: nodes, skip: ['__sweep'] };
+    }
+    return null;
+  }
+
+  function render() {
+    if (!lastResult) { ctxClear(); return; }
+    const res = lastResult.results[viewIdx];
+    const xy = getXy(res);
+    if (!xy) { renderOP(res); return; }
+
+    const names = Object.keys(xy.nodes).filter(n => n !== '0' && !(xy.skip || []).includes(n)).sort();
+    if (!names.length) { ctxClear(); return; }
+
+    // trace chips
+    tracesEl.innerHTML = '';
+    names.forEach((n, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'trace-chip' + (traceState[n] === false ? ' off' : '');
+      const sw = document.createElement('span'); sw.className = 'sw';
+      sw.style.background = COLORS[i % COLORS.length];
+      const lb = document.createElement('span'); lb.textContent = 'v(' + n + ')';
+      chip.append(sw, lb);
+      chip.addEventListener('click', () => {
+        traceState[n] = !(traceState[n] !== false);
+        render();
+      });
+      tracesEl.appendChild(chip);
+    });
+
+    drawChart(xy, names);
+  }
+
+  function renderOP(res) {
+    tracesEl.innerHTML = '';
+    const ctx = plotEl.getContext('2d');
+    ctx.clearRect(0, 0, plotEl.width, plotEl.height);
+    drawEmptyMsg(ctx, 'Operating point — values below');
+    let html = '<table>';
+    const nodeKeys = Object.keys(res.nodes).filter(n => n !== '0').sort();
+    html += '<tr><td colspan="2" style="color:var(--accent)">NODE VOLTAGES</td></tr>';
+    for (const n of nodeKeys) html += '<tr><td>v(' + n + ')</td><td>' + fmt(res.nodes[n], 'V') + '</td></tr>';
+    const srcKeys = Object.keys(res.sources || {});
+    if (srcKeys.length) {
+      html += '<tr><td colspan="2" style="color:var(--accent)"><br>SOURCE CURRENTS</td></tr>';
+      for (const s of srcKeys) html += '<tr><td>i(' + s + ')</td><td>' + fmt(res.sources[s], 'A') + '</td></tr>';
+    }
+    if (res.converged === false) html += '<tr><td colspan="2" style="color:var(--err)"><br>⚠ did not converge cleanly</td></tr>';
+    html += '</table>';
+    opEl.innerHTML = html;
+    opEl.style.display = 'block';
+  }
+
+  function drawEmptyMsg(ctx, msg) {
+    ctx.fillStyle = '#3a465a'; ctx.font = '14px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(msg, plotEl.width / 2, plotEl.height / 2);
+  }
+
+  let hoverPt = null;
+  let xyRef = null, namesRef = null;
+
+  function drawChart(xy, names) {
+    xyRef = xy; namesRef = names;
+    const dpr = window.devicePixelRatio || 1;
+    const W = plotEl.clientWidth, H = plotEl.clientHeight;
+    plotEl.width = W * dpr; plotEl.height = H * dpr;
+    const ctx = plotEl.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const M = { l: 62, r: 16, t: 16, b: 40 };
+    const pw = W - M.l - M.r, ph = H - M.t - M.b;
+
+    // scale
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    const active = names.filter(n => traceState[n] !== false);
+    for (const n of active) {
+      const ys = xy.nodes[n];
+      for (let i = 0; i < ys.length; i++) {
+        const v = ys[i];
+        if (!isFinite(v)) continue;
+        if (v < ymin) ymin = v; if (v > ymax) ymax = v;
+      }
+    }
+    for (const v of xy.x) { if (isFinite(v)) { if (v < xmin) xmin = v; if (v > xmax) xmax = v; } }
+    if (!isFinite(xmin) || !active.length) { drawEmptyMsg(ctx, 'No data'); return; }
+    if (ymax === ymin) { ymax += 0.5; ymin -= 0.5; }
+    if (xmax === xmin) xmax += 1;
+    const pad = (ymax - ymin) * 0.06;
+    ymin -= pad; ymax += pad;
+
+    const X = v => M.l + (v - xmin) / (xmax - xmin) * pw;
+    const Y = v => M.t + ph - (v - ymin) / (ymax - ymin) * ph;
+
+    // grid + axes
+    ctx.strokeStyle = '#1e2836'; ctx.fillStyle = '#7d8a9c'; ctx.lineWidth = 1;
+    ctx.font = '11px system-ui'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const yticks = niceTicks(ymin, ymax, 6);
+    for (const t of yticks) {
+      const y = Y(t);
+      ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(M.l + pw, y); ctx.stroke();
+      ctx.fillText(engTick(t), M.l - 8, y);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const xticks = niceTicks(xmin, xmax, 8);
+    for (const t of xticks) {
+      const x = X(t);
+      ctx.beginPath(); ctx.moveTo(x, M.t); ctx.lineTo(x, M.t + ph); ctx.stroke();
+      ctx.fillText(engTick(t), x, M.t + ph + 8);
+    }
+    // axis labels
+    ctx.fillStyle = '#98a5b6'; ctx.textAlign = 'center';
+    ctx.fillText(xy.xs, M.l + pw / 2, M.t + ph + 26);
+    ctx.save();
+    ctx.translate(14, M.t + ph / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Voltage (V)', 0, 0);
+    ctx.restore();
+
+    // frame
+    ctx.strokeStyle = '#2d3748';
+    ctx.strokeRect(M.l, M.t, pw, ph);
+
+    // traces
+    names.forEach((n, i) => {
+      if (traceState[n] === false) return;
+      const ys = xy.nodes[n];
+      ctx.strokeStyle = COLORS[i % COLORS.length]; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      let started = false;
+      for (let k = 0; k < ys.length; k++) {
+        const v = ys[k], xv = xy.x[k];
+        if (!isFinite(v) || !isFinite(xv)) { started = false; continue; }
+        const px = X(xv), py = Y(v);
+        if (!started) { ctx.moveTo(px, py); started = true; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    });
+
+    // hover crosshair
+    if (hoverPt) {
+      const i = hoverPt.i;
+      if (i >= 0 && i < xy.x.length) {
+        ctx.strokeStyle = '#5a6a80'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+        const px = X(xy.x[i]);
+        ctx.beginPath(); ctx.moveTo(px, M.t); ctx.lineTo(px, M.t + ph); ctx.stroke();
+        ctx.setLineDash([]);
+        // value box
+        let lines = [eng(xy.x[i]) + 's'];
+        names.forEach((n, k) => {
+          if (traceState[n] === false) return;
+          const v = xy.nodes[n][i];
+          if (isFinite(v)) lines.push({ t: 'v(' + n + ') = ' + fmtNum(v), c: COLORS[k % COLORS.length] });
+        });
+        const bw = 170, bh = 16 + lines.length * 15;
+        let bx = px + 10; if (bx + bw > M.l + pw) bx = px - bw - 10;
+        const by = M.t + 8;
+        ctx.fillStyle = 'rgba(13,17,23,.92)';
+        ctx.strokeStyle = '#2d3748';
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke();
+        ctx.font = '11px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillStyle = '#98a5b6'; ctx.fillText(lines[0], bx + 8, by + 5);
+        for (let k = 1; k < lines.length; k++) {
+          ctx.fillStyle = lines[k].c;
+          ctx.fillText(lines[k].t, bx + 8, by + 5 + k * 15);
+        }
+      }
+    }
+  }
+
+  plotEl.addEventListener('mousemove', e => {
+    if (!xyRef) return;
+    const r = plotEl.getBoundingClientRect();
+    const M = { l: 62, r: 16, t: 16, b: 40 };
+    const pw = plotEl.clientWidth - M.l - M.r;
+    const frac = (e.clientX - r.left - M.l) / pw;
+    if (frac < 0 || frac > 1) { hoverPt = null; return; }
+    const i = Math.round(frac * (xyRef.x.length - 1));
+    hoverPt = { i: Math.max(0, Math.min(xyRef.x.length - 1, i)) };
+    if (namesRef) drawChart(xyRef, namesRef);
+  });
+  plotEl.addEventListener('mouseleave', () => { hoverPt = null; if (namesRef) drawChart(xyRef, namesRef); });
+  window.addEventListener('resize', () => { if (namesRef) drawChart(xyRef, namesRef); });
+
+  /* ---------- formatting helpers ---------- */
+  function eng(v) {
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    const pre = [[1e9, 'G'], [1e6, 'M'], [1e3, 'k'], [1, ''], [1e-3, 'm'], [1e-6, 'µ'], [1e-9, 'n'], [1e-12, 'p'], [1e-15, 'f']];
+    for (const [s, p] of pre) if (a >= s) return (v / s).toPrecision(3).replace(/\.?0+$/, '') + p;
+    return v.toExponential(2);
+  }
+  function engTick(v) {
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    if (a >= 1e5 || a < 1e-4) return v.toExponential(0);
+    return (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(3)).replace(/\.?0+$/, '') || '0';
+  }
+  function fmtNum(v) {
+    if (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0)) return v.toExponential(3);
+    return v.toPrecision(5).replace(/\.?0+$/, '');
+  }
+  function fmt(v, unit) { return fmtNum(v) + ' ' + unit; }
+  function niceTicks(min, max, n) {
+    const span = max - min;
+    if (span <= 0) return [min];
+    const step0 = span / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const norm = step0 / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10) * mag;
+    const start = Math.ceil(min / step) * step;
+    const out = [];
+    for (let t = start; t <= max + step * 1e-9; t += step) out.push(t);
+    return out;
+  }
+
+  /* ---------- CSV export ---------- */
+  $('#csv').addEventListener('click', () => {
+    if (!lastResult) { setStatus('Run a simulation first', 'err'); return; }
+    const res = lastResult.results[viewIdx];
+    let csv;
+    if (res.type === 'op') {
+      csv = 'node,voltage\\n' + Object.keys(res.nodes).filter(n => n !== '0')
+        .map(n => n + ',' + res.nodes[n].toPrecision(8)).join('\\n');
+    } else {
+      const xy = getXy(res);
+      if (!xy) return;
+      const names = Object.keys(xy.nodes).filter(n => n !== '0' && n !== '__sweep').sort();
+      csv = 'x,' + names.map(n => 'v(' + n + ')').join(',') + '\\n';
+      for (let i = 0; i < xy.x.length; i++)
+        csv += xy.x[i].toPrecision(8) + ',' + names.map(n => isFinite(xy.nodes[n][i]) ? xy.nodes[n][i].toPrecision(8) : '').join(',') + '\\n';
+    }
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'spicestudio_export.csv';
+    a.click();
+    setStatus('CSV exported', 'ok');
+  });
+
+  /* ---------- save / load ---------- */
+  $('#save').addEventListener('click', () => {
+    try { localStorage.setItem('spicestudio_netlist', netlistEl.value); setStatus('Netlist saved in this browser', 'ok'); }
+    catch (e) { setStatus('Could not save: ' + e.message, 'err'); }
+  });
+  $('#load').addEventListener('click', () => {
+    const v = localStorage.getItem('spicestudio_netlist');
+    if (v) { netlistEl.value = v; runSim(); }
+    else setStatus('Nothing saved yet', 'err');
+  });
+
+  runSim();
+})();
+</script>
+</body>
+</html>
